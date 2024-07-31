@@ -1,3 +1,6 @@
+# compiled output
+/imgages
+/assets
 # Miscellaneous
 *.class
 *.log

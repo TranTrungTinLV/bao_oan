@@ -37,6 +37,8 @@ dependencies:
   animated_text_kit: ^4.2.2
   audioplayers: ^6.0.0
   flame: ^1.18.0
+  video_player: ^2.9.1
+  fijkplayer: ^0.11.0
 
 dev_dependencies:
   flutter_test:
