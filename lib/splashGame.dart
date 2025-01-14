@@ -39,7 +39,6 @@ class _SplashGameState extends State<SplashGame> {
   }
 
   void _playBackgroundMusic() async {
-    // Sử dụng tệp âm thanh cục bộ, đặt file âm thanh trong thư mục assets và định nghĩa trong pubspec.yaml
     await _audioPlayer.play(AssetSource('horror_music.mp3'));
 
     Duration audioDuration = (await _audioPlayer.getDuration())!;
@@ -83,7 +82,6 @@ class _SplashGameState extends State<SplashGame> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
-        // mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             width: double.infinity,
