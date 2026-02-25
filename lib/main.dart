@@ -8,22 +8,25 @@ void main() {
   SystemChrome.setPreferredOrientations(
       [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  MyApp({super.key});
+  const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Bao Oan',
-      home: SplashGame(),
+      title: 'Báo Oán',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+      ),
+      home: const SplashGame(),
       routes: {
-        SplashGame.id: (context) => SplashGame(),
-        HomeGame.id: (context) => HomeGame(),
+        SplashGame.id: (context) => const SplashGame(),
+        HomeGame.id: (context) => const HomeGame(),
       },
     );
   }
