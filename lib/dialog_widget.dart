@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:bao_oan/game_controller.dart';
 
 /// RPG-style dialog box widget with typewriter effect
 /// Hiển thị dialog kiểu game RPG: avatar + tên + text gõ từng chữ
@@ -7,6 +8,7 @@ class DialogWidget extends StatefulWidget {
   final String speaker;
   final String text;
   final bool isNPC;
+  final List<DialogChoice>? choices;
   final VoidCallback onComplete;
   final VoidCallback onTap;
 
@@ -15,6 +17,7 @@ class DialogWidget extends StatefulWidget {
     required this.speaker,
     required this.text,
     required this.isNPC,
+    this.choices,
     required this.onComplete,
     required this.onTap,
   });
@@ -72,7 +75,10 @@ class _DialogWidgetState extends State<DialogWidget> {
         _isComplete = true;
       });
     } else {
-      widget.onTap();
+      // If there are choices, tapping the bg does nothing.
+      if (widget.choices == null || widget.choices!.isEmpty) {
+        widget.onTap();
+      }
     }
   }
 
@@ -86,6 +92,7 @@ class _DialogWidgetState extends State<DialogWidget> {
   Widget build(BuildContext context) {
     final displayText = widget.text.substring(0, _visibleChars);
     final isSystem = widget.speaker == 'Hệ thống';
+    final hasChoices = widget.choices != null && widget.choices!.isNotEmpty;
 
     return Positioned(
       bottom: 0,
@@ -150,7 +157,7 @@ class _DialogWidgetState extends State<DialogWidget> {
                     ),
                   ),
                   const Spacer(),
-                  if (_isComplete)
+                  if (_isComplete && !hasChoices)
                     Text(
                       '▶',
                       style: TextStyle(
@@ -171,6 +178,38 @@ class _DialogWidgetState extends State<DialogWidget> {
                   letterSpacing: 0.5,
                 ),
               ),
+              
+              // Choices
+              if (_isComplete && hasChoices)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: widget.choices!.map((choice) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.1),
+                            foregroundColor: Colors.white,
+                            alignment: Alignment.centerLeft,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () {
+                            choice.onSelected();
+                            widget.onTap();
+                          },
+                          child: Text(
+                            choice.text,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
             ],
           ),
         ),

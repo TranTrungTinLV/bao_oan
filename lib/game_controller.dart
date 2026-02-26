@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// Game state management for BÁO OAN demo
 /// Quản lý scene hiện tại, inventory, flags sự kiện
 
@@ -21,10 +23,21 @@ class GameController {
   bool gotKey = false;
   bool enteredHouse = false;
   bool metBaNam = false;
-  bool heardNoise = false;
-  bool wentToAttic = false;
+  bool foundOldItems = false; // Tìm thấy Thẻ sinh viên & Đồng hồ cũ
+  bool heardNoise1 = false; // Lần 1 nghe tiếng động
+  bool visitedAtticFirstTime = false; // Lên gác kiếm chuột lần đầu
+  bool heardNoise2 = false; // Lần 2 nghe tiếng động dồn dập
+  bool wentToAttic = false; // Lên gác lần 2
   bool foundDiary = false;
   
+  // Horror flags
+  double sanityLevel = 1.0; // 1.0 (Bình thường), giảm dần khi gặp ma
+  bool isPowerOff = false; // Tắt đèn lúc 3:15 sáng
+  bool lookedInMirror = false; // Đã soi gương trong nhà vệ sinh chưa
+  bool solvedMandala = false; // Giải đố Mạn-đà-la 5 góc
+  bool solvedTornPaper = false; // Giải đố Ráp bùa rách
+  bool solvedBetelTray = false; // Giải đố Khay trầu cau (hiện chữ máu)
+
   // Player position
   double playerX = 0.15;
   bool playerFacingRight = true;
@@ -37,6 +50,7 @@ class GameController {
   bool isNearDoor() => playerX > 0.4 && playerX < 0.6 && currentScene == GameScene.outside;
   bool isNearSofa() => playerX < 0.35 && currentScene == GameScene.inside;
   bool isNearStairs() => playerX > 0.65 && currentScene == GameScene.inside;
+  bool isNearMirror() => playerX > 0.4 && playerX < 0.55 && currentScene == GameScene.inside; // Nhà vệ sinh tạm ở giữa nhà
   bool isNearDiary() => playerX > 0.4 && playerX < 0.7 && currentScene == GameScene.attic;
   bool isNearBaHuyen() => (playerX - baHuyenX).abs() < 0.15 && currentScene == GameScene.outside;
   bool isNearBaNam() => (playerX - baNamX).abs() < 0.15 && currentScene == GameScene.inside;
@@ -63,23 +77,64 @@ class GameController {
             DialogLine('Kiên', 'Dạ vâng cháu mới chuyển đến hồi tối hôm qua.', false),
             DialogLine('Bà Năm', 'Thế... cậu có cúng kiến gì khi vào ở chưa?', true),
             DialogLine('Kiên', 'Cúng kiến? Cúng kiến gì hả bà?', false),
-            DialogLine('Bà Năm', 'Người mới dọn vào thì ít nhất cũng phải cúng kiến xin những người khuất mặt khuất mày ở đây. Cậu cẩn thận đấy!', true),
-            DialogLine('Kiên', 'Mấy cái chuyện mê tín như thế này cháu không tin đâu ạ!', false),
+            DialogLine('Bà Năm', 'Người dọn vào thì ít nhất cũng phải cúng xin những người khuất mặt khuất mày. Cậu cẩn thận đấy!', true),
+            DialogLine('Kiên', '...', false, choices: [
+              DialogChoice('Mấy cái chuyện mê tín này cháu không tin đâu!', () {
+                sanityLevel -= 0.1; // Cứng đầu thì bị ám mạnh hơn
+              }),
+              DialogChoice('Cháu mới tới chưa rành, bà chỉ cháu với.', () {
+                sanityLevel += 0.1;
+              }),
+            ]),
+            DialogLine('Bà Năm', 'Nhớ kỹ mảnh giấy tôi đưa. Lỡ có chuyện gì không lành thì nhớ nhẩm: Mệnh Hỏa chỉ Đỏ, Thổ Đen, Kim Xám, Thủy Đen, Mộc Đỏ... (Đỏ - Đen - Xám - Đen - Đỏ)', true),
           ];
         }
-        if (heardNoise && !wentToAttic) {
+        if (foundOldItems && !heardNoise1) {
           return [
-            DialogLine('Kiên', 'Quái lạ, tiếng động gì ở trên gác vậy? Chắc là lũ chuột...', false),
-            DialogLine('Hệ thống', '⬆️ Hãy đi lên cầu thang để kiểm tra gác mái.', false),
+            DialogLine('Kiên', 'Chỗ này có mớ đồ cũ của ai để quên từ trước nhỉ...', false),
+            DialogLine('Hệ thống', 'Bạn tìm thấy 1 cái Đồng hồ, 1 Thẻ Sinh Viên chữ bị phai mờ, và 1 cuốn Nhật Ký dính chặt vào nhau.', false),
+            DialogLine('Kiên', 'Chắc của sinh viên nào thuê trước đây bỏ lại. Thôi cứ cất gọn vào vậy.', false),
+          ];
+        }
+        if (heardNoise1 && !visitedAtticFirstTime) {
+          return [
+            DialogLine('Kiên', 'Quái lạ, tiếng động loạt soạt gì ở trên gác vậy? Chắc là lũ chuột...', false),
+            DialogLine('Hệ thống', '⬆️ Hãy đi lên cầu thang để kiểm tra gác mái lần 1.', false),
+          ];
+        }
+        if (heardNoise2 && !wentToAttic) {
+          return [
+            DialogLine('Kiên', 'Lại nữa?! Lần này tiếng động dồn dập hơn lúc nãy! Không thể nào là chuột được!', false),
+            DialogLine('Hệ thống', '⬆️ Hãy lên cầu thang kiểm tra lần 2.', false),
+          ];
+        }
+        if (isPowerOff && !lookedInMirror) {
+          return [
+            DialogLine('Kiên', 'Ơ cúp điện à? Sao lại đúng lúc thế này chứ!!!', false),
+            DialogLine('Kiên', 'Khoan đã... tiếng kèn trống đám tang ở đâu vọng lại thế này? Nửa đêm rồi cơ mà?', false),
+            DialogLine('Hệ thống', '💡 Nhấn bật đèn pin. Đi xuống nhà tìm bồn rửa mặt soi gương xem có gì bất thường.', false),
+          ];
+        }
+        if (solvedTornPaper && !solvedBetelTray) {
+          return [
+            DialogLine('Kiên', 'Lá bùa rách đã bị đốt cháy... Mình cảm thấy luồng khí lạnh đang tập trung ở chỗ chiếc Ghế Sofa.', false),
+            DialogLine('Hệ thống', 'Mùi máu tanh từ khay trầu cau... Hãy đi tới Ghế Sofa kiểm tra!', false),
           ];
         }
         return [];
       case GameScene.attic:
-        if (!foundDiary) {
+        if (visitedAtticFirstTime && !heardNoise2) {
           return [
-            DialogLine('Kiên', 'Không có con chuột nào cả... Nhưng chờ đã, cuốn nhật ký này...', false),
-            DialogLine('Kiên', 'Nó đang mở sẵn?! Rõ ràng mình đã cất nó đi rồi mà!', false),
-            DialogLine('Hệ thống', '📓 Bạn đã tìm thấy cuốn nhật ký bí ẩn...', false),
+            DialogLine('Kiên', 'Đèn sáng trưng thế này! Quái lạ, không có dấu vết của con chuột nào! Vết ố vàng gì đây?', false),
+            DialogLine('Hệ thống', 'Bạn phát hiện nhiều vệt ố vàng lạ trên bức tường trắng.', false),
+            DialogLine('Kiên', 'Lúc nãy đi xem phòng nào có thấy đâu... Chắc hoa mắt do thiếu ngủ. Thôi xuống Sofa nằm ngủ tiếp.', false),
+          ];
+        }
+        if (wentToAttic && !foundDiary) {
+          return [
+            DialogLine('Kiên', 'Nhật ký?! Nó đang mở sẵn ở trên giường kìa?! Rõ ràng mình cất nó ở dưới nhà rồi cơ mà!', false),
+            DialogLine('Kiên', 'Nhớ lại lời Bà Năm dặn khi nãy... Đỏ, Đen, Xám...', false),
+            DialogLine('Hệ thống', '📓 Tương tác vào các vòng chỉ để mở khóa nhật ký.', false),
           ];
         }
         return [];
@@ -93,10 +148,17 @@ class GameController {
   }
 }
 
+class DialogChoice {
+  final String text;
+  final VoidCallback onSelected;
+  DialogChoice(this.text, this.onSelected);
+}
+
 class DialogLine {
   final String speaker;
   final String text;
   final bool isNPC; // true = NPC, false = player/system
+  final List<DialogChoice>? choices; // Nullable choices
   
-  DialogLine(this.speaker, this.text, this.isNPC);
+  DialogLine(this.speaker, this.text, this.isNPC, {this.choices});
 }

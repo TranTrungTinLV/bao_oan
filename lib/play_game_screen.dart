@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui' as ui;
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:bao_oan/HomeGame.dart';
 import 'package:bao_oan/dialog_widget.dart';
 import 'package:bao_oan/game_controller.dart';
+import 'package:bao_oan/puzzle_mandala_widget.dart';
+import 'package:bao_oan/puzzle_torn_paper_widget.dart';
+import 'package:bao_oan/puzzle_betel_tray_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,7 +28,17 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   late AudioPlayer _bgMusic;
   late AudioPlayer _sfxPlayer;
   late AudioPlayer _sfxPlayer2;
+  late AudioPlayer _chantingPlayer;
+  late AudioPlayer _cryPlayer;
+  late AudioPlayer _heartbeatPlayer;
+  late AudioPlayer _envSfxPlayer;
   bool _musicStarted = false;
+  bool _isHeartbeatPlaying = false;
+
+  // Puzzles state
+  bool _showMandala = false;
+  bool _showTornPaper = false;
+  bool _showBetelTray = false;
 
   // Animation
   late AnimationController _flickerController;
@@ -50,6 +64,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   bool _lightsOff = false;
   Timer? _noiseTimer;
   bool _showNoiseHint = false;
+  bool _showFuneralIllusions = false;
+  bool _showDiaryContent = false;
 
   // Scene-specific
   bool _doorOpening = false;
@@ -75,6 +91,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     _bgMusic = AudioPlayer();
     _sfxPlayer = AudioPlayer();
     _sfxPlayer2 = AudioPlayer();
+    _chantingPlayer = AudioPlayer();
+    _cryPlayer = AudioPlayer();
+    _heartbeatPlayer = AudioPlayer();
+    _envSfxPlayer = AudioPlayer();
     _loadSpriteImages();
 
     _flickerController = AnimationController(
@@ -107,12 +127,35 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     if (!_musicStarted) {
       _musicStarted = true;
       try {
-        await _bgMusic.setVolume(0.5);
+        await _bgMusic.setVolume(0.3); // Giảm âm lượng nhạc nền xuống chút xíu
         await _bgMusic.setReleaseMode(ReleaseMode.loop);
         await _bgMusic.play(AssetSource('horror_music_main.mp3'));
         debugPrint('BG Music started successfully');
       } catch (e) {
         debugPrint('Error playing bg music: $e');
+      }
+
+      // Phát thêm tiếng gió rít nếu ở ngoài
+      if (_game.currentScene == GameScene.outside) {
+        _envSfxPlayer.setReleaseMode(ReleaseMode.loop);
+        _envSfxPlayer.play(AssetSource('wind_howl.mp3'));
+        _envSfxPlayer.setVolume(0.5);
+      }
+    }
+  }
+
+  void _checkHeartbeat() {
+    if (_game.sanityLevel <= 0.6) {
+      if (!_isHeartbeatPlaying) {
+        _isHeartbeatPlaying = true;
+        _heartbeatPlayer.setReleaseMode(ReleaseMode.loop);
+        _heartbeatPlayer.play(AssetSource('heartbeat.mp3'));
+        _heartbeatPlayer.setVolume(1.0);
+      }
+    } else {
+      if (_isHeartbeatPlaying) {
+        _isHeartbeatPlaying = false;
+        _heartbeatPlayer.stop();
       }
     }
   }
@@ -175,6 +218,19 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     if (!mounted) return;
     setState(() => _fadeOpacity = 0.0);
 
+    // Xử lý nhạc nền (Ambient) theo Scene
+    if (scene == GameScene.outside) {
+      _envSfxPlayer.setReleaseMode(ReleaseMode.loop);
+      _envSfxPlayer.play(AssetSource('wind_howl.mp3'));
+      _envSfxPlayer.setVolume(0.5);
+    } else if (scene == GameScene.attic) {
+      _envSfxPlayer.setReleaseMode(ReleaseMode.loop);
+      _envSfxPlayer.play(AssetSource('creaking_light.mp3'));
+      _envSfxPlayer.setVolume(0.2);
+    } else {
+      _envSfxPlayer.stop();
+    }
+
     await Future.delayed(const Duration(milliseconds: 500));
     _isTransitioning = false;
 
@@ -183,6 +239,27 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   void _triggerSceneEvent(GameScene scene) {
+    if (_game.isPowerOff && scene == GameScene.inside) {
+      _bgMusic.stop(); // Tắt nhạc nền cũ
+      if (_chantingPlayer.state != PlayerState.playing) {
+        _chantingPlayer.setReleaseMode(ReleaseMode.loop);
+        _chantingPlayer.play(AssetSource('chanting_nam_mo.mp3'));
+        _chantingPlayer.setVolume(0.5);
+      }
+      if (_cryPlayer.state != PlayerState.playing) {
+        _cryPlayer.setReleaseMode(ReleaseMode.loop);
+        _cryPlayer.play(AssetSource('funeral_cry_hollow.mp3'));
+        _cryPlayer.setVolume(0.5);
+      }
+      _lightsOff = true;
+      _flashlightOn = true;
+      _showFuneralIllusions = true;
+    } else if (scene != GameScene.inside || !_game.isPowerOff) {
+        _chantingPlayer.stop();
+        _cryPlayer.stop();
+        _showFuneralIllusions = false;
+    }
+
     switch (scene) {
       case GameScene.inside:
         if (!_game.metBaNam) {
@@ -194,14 +271,14 @@ class _PlayGameScreenState extends State<PlayGameScreen>
               });
             }
           });
-        } else if (!_game.heardNoise) {
+        } else if (!_game.heardNoise1 && _game.foundOldItems) {
           // Trigger noise after a delay
           _noiseTimer = Timer(const Duration(seconds: 4), () {
             if (mounted) {
               _sfxPlayer.play(AssetSource('scratching.mp3'));
               _sfxPlayer.setVolume(0.6);
               setState(() {
-                _game.heardNoise = true;
+                _game.heardNoise1 = true;
                 _shakeX = 2;
                 _shakeY = 1;
                 _showNoiseHint = true;
@@ -222,18 +299,38 @@ class _PlayGameScreenState extends State<PlayGameScreen>
         }
         break;
       case GameScene.attic:
-        _game.wentToAttic = true;
-        _lightsOff = true;
-        _sfxPlayer.play(AssetSource('light_flicker.mp3'));
-        _sfxPlayer.setVolume(0.5);
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              _game.isDialogActive = true;
-              _game.dialogIndex = 0;
-            });
-          }
-        });
+        if (_game.visitedAtticFirstTime && !_game.heardNoise2) {
+          // Lần đầu lên kiếm chuột (vẫn còn điện, chỉ thấy vết ố)
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted && _game.getDialogsForScene().isNotEmpty) {
+              setState(() {
+                _game.isDialogActive = true;
+                _game.dialogIndex = 0;
+              });
+            }
+          });
+        }
+        else if (!_game.wentToAttic && _game.heardNoise2) {
+          // Lần 2 lên mới thực sự gặp ma và bị nhốt (cúp điện)
+          _game.wentToAttic = true;
+          _lightsOff = true;
+          _sfxPlayer.play(AssetSource('light_flicker.mp3'));
+          _sfxPlayer.setVolume(0.5);
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _game.isPowerOff = true;
+                if (_game.getDialogsForScene().isNotEmpty) {
+                  _game.isDialogActive = true;
+                  _game.dialogIndex = 0;
+                }
+              });
+            }
+          });
+        } else {
+          // Trở lại gác mái các lần sau
+          _lightsOff = _game.isPowerOff;
+        }
         break;
       default:
         break;
@@ -266,49 +363,53 @@ class _PlayGameScreenState extends State<PlayGameScreen>
           _sfxPlayer.play(AssetSource('creak_door.mp3'));
           _sfxPlayer.setVolume(0.4);
         }
-        break;
       case GameScene.inside:
         if (!_game.metBaNam) {
           setState(() {
             _game.metBaNam = true;
           });
-          // Sau khi gặp Bà Năm → trigger tiếng động gác mái
-          _noiseTimer = Timer(const Duration(seconds: 4), () {
-            if (mounted && !_game.heardNoise) {
-              try {
-                _sfxPlayer.play(AssetSource('scratching.mp3'));
-                _sfxPlayer.setVolume(0.6);
-              } catch (_) {}
+          // Không bật isDialogActive ở đây vì Dialog thứ 2 đòi hỏi phải isNearSofa
+        }
+        else if (_game.foundOldItems && !_game.heardNoise1) {
+          // Sau khi nhặt được mớ đồ cũ -> Trigger tiếng chuột lần 1
+          _noiseTimer = Timer(const Duration(seconds: 3), () {
+            if (mounted) {
+              try { _sfxPlayer.play(AssetSource('scratching.mp3')); _sfxPlayer.setVolume(0.4); } catch (_) {}
               setState(() {
-                _game.heardNoise = true;
-                _shakeX = 3;
-                _shakeY = 2;
+                _game.heardNoise1 = true;
+                _showNoiseHint = true;
+              });
+              Future.delayed(const Duration(seconds: 1), () {
+                if (mounted) setState(() { _game.isDialogActive = true; _game.dialogIndex = 0; });
+              });
+            }
+          });
+        }
+        else if (_game.visitedAtticFirstTime && !_game.heardNoise2) {
+          // Sau khi lên gác bị lừa, xuống Sofa lại -> Tiếng động 2 dồn dập
+           _noiseTimer = Timer(const Duration(seconds: 2), () {
+            if (mounted) {
+              try { _sfxPlayer.play(AssetSource('scratching.mp3')); _sfxPlayer.setVolume(1.0); } catch (_) {} // Dồn dập
+              setState(() {
+                _game.heardNoise2 = true;
+                _shakeX = 5; _shakeY = 3;
                 _showNoiseHint = true;
               });
               Future.delayed(const Duration(milliseconds: 500), () {
                 if (mounted) setState(() { _shakeX = 0; _shakeY = 0; });
               });
               Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) {
-                  setState(() {
-                    _game.isDialogActive = true;
-                    _game.dialogIndex = 0;
-                  });
-                }
+                if (mounted) setState(() { _game.isDialogActive = true; _game.dialogIndex = 0; });
               });
             }
           });
         }
         break;
       case GameScene.attic:
-        if (!_game.foundDiary) {
+        if (!_game.foundDiary && !_game.solvedMandala && _game.wentToAttic) {
           setState(() {
             _game.foundDiary = true;
-          });
-          // Ghost flash!
-          _triggerGhostFlash();
-          Future.delayed(const Duration(seconds: 3), () {
-            _transitionToScene(GameScene.endDemo);
+            _showMandala = true;
           });
         }
         break;
@@ -317,13 +418,43 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     }
   }
 
+  void _onMandalaSolved() {
+    setState(() {
+      _showMandala = false;
+      _game.solvedMandala = true;
+      _showDiaryContent = true; // Hiện thư con ma
+    });
+    // Tiếng lật sách sột soạt
+    _sfxPlayer.play(AssetSource('paper_rustle.mp3'));
+  }
+
+  void _onTornPaperSolved() {
+    setState(() {
+      _showTornPaper = false;
+      _game.solvedTornPaper = true;
+    });
+  }
+
+  void _onBetelTraySolved() {
+    setState(() {
+      _showBetelTray = false;
+      _game.solvedBetelTray = true;
+    });
+    _transitionToScene(GameScene.endDemo);
+  }
+
   void _triggerGhostFlash() async {
-    _sfxPlayer.play(AssetSource('jumpscare_scream.mp3'));
+    _sfxPlayer.play(AssetSource('jumpscare_mirror.mp3')); // Dùng file jumpscare_mirror User tải
     _sfxPlayer.setVolume(1.0);
+    _envSfxPlayer.play(AssetSource('glitch_sound.mp3')); // Play thêm tiếng Glitch vỡ Tivi
+    _envSfxPlayer.setVolume(0.5);
+    
     setState(() {
       _showGhostFlash = true;
       _shakeX = 30; // Extreme shake
       _shakeY = 30;
+      _game.sanityLevel -= 0.3; // Bị hù sẽ tụt Sanity
+      _checkHeartbeat();
     });
     
     // Quick flashing effect
@@ -346,7 +477,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   void _startMoving(bool left) {
-    if (_game.isDialogActive || _isTransitioning) return;
+    if (_game.isDialogActive || _isTransitioning || _showMandala || _showTornPaper || _showBetelTray) return;
     _movingLeft = left;
     _movingRight = !left;
     _moveTimer?.cancel();
@@ -392,15 +523,42 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   void _handleInteract() {
-    if (_game.isDialogActive || _isTransitioning) return;
+    if (_game.isDialogActive || _isTransitioning || _showMandala || _showTornPaper || _showBetelTray) return;
 
     if (_game.currentScene == GameScene.outside && _game.isNearDoor() && _game.gotKey) {
       _sfxPlayer.play(AssetSource('creak_door.mp3'));
       _game.enteredHouse = true;
       _transitionToScene(GameScene.inside);
-    } else if (_game.currentScene == GameScene.inside && _game.isNearStairs() && _game.heardNoise) {
+    } else if (_game.currentScene == GameScene.inside && _game.isNearSofa() && _game.metBaNam && !_game.foundOldItems) {
+      _game.foundOldItems = true;
+      _game.isDialogActive = true;
+      _game.dialogIndex = 0;
+      setState(() {});
+    } else if (_game.currentScene == GameScene.inside && _game.isNearStairs() && _game.heardNoise1 && !_game.visitedAtticFirstTime) {
+      _sfxPlayer.play(AssetSource('footsteps_gravel.mp3'));
+      _game.visitedAtticFirstTime = true;
+      _transitionToScene(GameScene.attic);
+    } else if (_game.currentScene == GameScene.inside && _game.isNearStairs() && _game.heardNoise2 && !_game.wentToAttic) {
       _sfxPlayer.play(AssetSource('footsteps_gravel.mp3'));
       _transitionToScene(GameScene.attic);
+    } else if (_game.currentScene == GameScene.attic && _game.playerX < 0.2) { // Xuống nhà
+      _sfxPlayer.play(AssetSource('footsteps_gravel.mp3'));
+      
+      // Nếu là đang xuống nhà Lần 1 sau vụ bóng ố vàng
+      if (_game.visitedAtticFirstTime && !_game.heardNoise2) {
+        _game.isDialogActive = true; 
+        _game.dialogIndex = 0;
+      }
+      
+      _transitionToScene(GameScene.inside);
+    } else if (_game.currentScene == GameScene.inside && _game.isPowerOff && _game.isNearMirror() && !_game.lookedInMirror) {
+      _triggerGhostFlash();
+      _game.lookedInMirror = true;
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _showTornPaper = true);
+      });
+    } else if (_game.currentScene == GameScene.inside && _game.solvedTornPaper && _game.isNearSofa() && !_game.solvedBetelTray) {
+      setState(() => _showBetelTray = true);
     }
   }
 
@@ -418,6 +576,15 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     _sfxPlayer.dispose();
     _sfxPlayer2.stop();
     _sfxPlayer2.dispose();
+    _chantingPlayer.stop();
+    _chantingPlayer.dispose();
+    _cryPlayer.stop();
+    _cryPlayer.dispose();
+    
+    _heartbeatPlayer.stop();
+    _heartbeatPlayer.dispose();
+    _envSfxPlayer.stop();
+    _envSfxPlayer.dispose();
     super.dispose();
   }
 
@@ -450,6 +617,9 @@ class _PlayGameScreenState extends State<PlayGameScreen>
             // Player character
             _buildPlayer(size),
 
+            // Funeral Illusions (Ghosts)
+            if (_showFuneralIllusions) _buildFuneralIllusions(),
+
             // Interaction hints
             _buildInteractionHints(size),
 
@@ -462,8 +632,43 @@ class _PlayGameScreenState extends State<PlayGameScreen>
             // Dialog
             if (_game.isDialogActive) _buildDialog(),
 
+            // Puzzles Overlay class components
+            if (_showMandala)
+              Positioned.fill(
+                child: PuzzleMandalaWidget(
+                  onSolved: _onMandalaSolved,
+                  onClose: () => setState(() => _showMandala = false),
+                ),
+              ),
+            if (_showDiaryContent)
+              Positioned.fill(
+                child: _buildDiaryContent(),
+              ),
+            if (_showTornPaper)
+              Positioned.fill(
+                child: PuzzleTornPaperWidget(
+                  onSolved: _onTornPaperSolved,
+                  onClose: () => setState(() => _showTornPaper = false),
+                ),
+              ),
+            if (_showBetelTray)
+              Positioned.fill(
+                child: PuzzleBetelTrayWidget(
+                  onSolved: _onBetelTraySolved,
+                  onClose: () => setState(() => _showBetelTray = false),
+                ),
+              ),
+
             // Controls
-            if (!_game.isDialogActive) _buildControls(size),
+            if (!_game.isDialogActive && !_showMandala && !_showTornPaper && !_showBetelTray) _buildControls(size),
+            
+            // Sanity Bar 
+            if (_game.currentScene != GameScene.outside)
+              Positioned(
+                top: 16,
+                left: 100,
+                child: _buildSanityBar(),
+              ),
 
             // Scene fade transition
             AnimatedOpacity(
@@ -524,6 +729,34 @@ class _PlayGameScreenState extends State<PlayGameScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSanityBar() {
+    return Container(
+      width: 150,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Tinh Thần', style: TextStyle(color: Colors.white70, fontSize: 10)),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: _game.sanityLevel.clamp(0.0, 1.0),
+              backgroundColor: Colors.white24,
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.redAccent),
+              minHeight: 8,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -687,9 +920,28 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       ));
     }
 
+    // Bà Năm interaction
+    if (_game.currentScene == GameScene.inside &&
+        _game.isNearBaNam() &&
+        !_game.metBaNam) {
+      hints.add(_buildHintBubble(
+        size, _game.baNamX, '[E] Nói chuyện', Colors.blue,
+      ));
+    }
+
+    // Sofa interaction (Nhặt thẻ Sinh viên)
+    if (_game.currentScene == GameScene.inside &&
+        _game.metBaNam &&
+        !_game.foundOldItems &&
+        _game.isNearSofa()) {
+      hints.add(_buildHintBubble(
+        size, 0.25, '🔍 Nhấn [E] để xem đồ cũ', Colors.yellow,
+      ));
+    }
+
     // Stairs interaction
     if (_game.currentScene == GameScene.inside &&
-        _game.heardNoise &&
+        _game.heardNoise1 &&
         _game.isNearStairs()) {
       hints.add(_buildHintBubble(
         size, 0.72, '⬆️ Nhấn [E] lên gác mái', Colors.red,
@@ -940,10 +1192,16 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       ),
     );
   }
-
   bool _canInteract() {
     if (_game.currentScene == GameScene.outside && _game.gotKey && _game.isNearDoor()) return true;
-    if (_game.currentScene == GameScene.inside && _game.heardNoise && _game.isNearStairs()) return true;
+    if (_game.currentScene == GameScene.inside && _game.metBaNam && !_game.foundOldItems && _game.isNearSofa()) return true;
+    if (_game.currentScene == GameScene.inside && _game.heardNoise1 && _game.isNearStairs()) return true;
+    if (_game.currentScene == GameScene.attic && _game.playerX < 0.2) return true; // Cầu thang xuống
+    if (_game.currentScene == GameScene.inside && _game.isPowerOff && _game.isNearMirror() && !_game.lookedInMirror) return true;
+    if (_game.currentScene == GameScene.inside && _game.solvedTornPaper && _game.isNearSofa() && !_game.solvedBetelTray) return true;
+    if (_game.currentScene == GameScene.outside && _game.isNearBaHuyen() && !_game.metBaHuyen) return true;
+    if (_game.currentScene == GameScene.inside && _game.isNearBaNam() && !_game.metBaNam) return true;
+    if (_game.currentScene == GameScene.attic && _game.isNearDiary() && !_game.foundDiary && _game.wentToAttic) return true;
     return false;
   }
 
@@ -1006,6 +1264,119 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.3),
                   fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDiaryContent() {
+    return Scaffold(
+      backgroundColor: Colors.black87,
+      body: Center(
+        child: Container(
+          width: 300,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.yellow[100],
+            border: Border.all(color: Colors.brown[800]!, width: 4),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withOpacity(0.5),
+                blurRadius: 30,
+                spreadRadius: 5,
+              )
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Trang cuối...',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Mưa dột nhiều ngày liền...\nBà chủ đòi tăng tiền phòng...\nCăn nhà 403 này thật ngột ngạt.\nTôi muốn thoát khỏi đây...\nNhưng có ai đó đang giam giữ tôi ở sau mảng tường này...',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 20,
+                  height: 1.5,
+                  fontFamily: 'HorrorText',
+                  color: Colors.red, // Viết bằng máu
+                ),
+              ),
+              const SizedBox(height: 30),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _showDiaryContent = false;
+                  });
+                },
+                child: const Text(
+                  '[Đóng sổ]',
+                  style: TextStyle(color: Colors.black87, fontSize: 16),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFuneralIllusions() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: 0.6,
+          child: Stack(
+            children: [
+              // Red ambient glow for the altar illusion
+              Positioned(
+                bottom: 150,
+                left: 100,
+                child: Container(
+                  width: 150,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.2),
+                    boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.6), blurRadius: 40)],
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              // Silhouette Ghost 1
+              Positioned(
+                bottom: 120,
+                left: 80,
+                child: Icon(Icons.person, size: 100, color: Colors.black.withOpacity(0.8)),
+              ),
+              // Silhouette Ghost 2
+              Positioned(
+                bottom: 130,
+                left: 170,
+                child: Icon(Icons.person, size: 90, color: Colors.black.withOpacity(0.8)),
+              ),
+              // Fake Altar/Coffin box
+              Positioned(
+                bottom: 100,
+                left: 110,
+                child: Container(
+                  width: 100,
+                  height: 40,
+                  color: Colors.black.withOpacity(0.9),
+                  child: const Center(
+                    child: Icon(Icons.lens, size: 8, color: Colors.redAccent), // Fake incense
+                  ),
                 ),
               ),
             ],
