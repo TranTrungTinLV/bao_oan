@@ -61,6 +61,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   static const int _spriteColumns = 8;
   static const int _spriteRows = 8;
   int _currentRow = 0; // 0=idle, 1=walk, 5=look around
+  bool _flashlightOn = false;
 
   // NPC animation
   int _npcFrame = 0;
@@ -318,13 +319,23 @@ class _PlayGameScreenState extends State<PlayGameScreen>
 
   void _triggerGhostFlash() async {
     _sfxPlayer.play(AssetSource('jumpscare_scream.mp3'));
-    _sfxPlayer.setVolume(0.7);
+    _sfxPlayer.setVolume(1.0);
     setState(() {
       _showGhostFlash = true;
-      _shakeX = 5;
-      _shakeY = 3;
+      _shakeX = 30; // Extreme shake
+      _shakeY = 30;
     });
-    await Future.delayed(const Duration(milliseconds: 800));
+    
+    // Quick flashing effect
+    for (int i = 0; i < 5; i++) {
+      await Future.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+      setState(() {
+        _showGhostFlash = !_showGhostFlash;
+        _shakeX = _showGhostFlash ? 30 : -30;
+      });
+    }
+
     if (mounted) {
       setState(() {
         _showGhostFlash = false;
@@ -583,8 +594,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   Widget _buildPlayer(Size size) {
-    final spriteImage = (_game.currentScene == GameScene.attic ||
-            _game.currentScene == GameScene.inside)
+    final spriteImage = (_game.currentScene == GameScene.attic && _flashlightOn)
         ? _flashlightSpriteImage
         : _normalSpriteImage;
     if (spriteImage == null) return const SizedBox.shrink();
@@ -738,15 +748,16 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   Widget _buildGhostFlash(Size size) {
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withOpacity(0.7),
+        color: Colors.red.withOpacity(0.6), // Bloody red flash
         child: Center(
-          child: Opacity(
-            opacity: 0.8,
-            child: Image.asset(
-              'images/npc/ghost.png',
-              width: size.height * 0.6,
-              height: size.height * 0.6,
-              fit: BoxFit.contain,
+          child: Transform.scale(
+            scale: 2.5, // Jump into face
+            child: Opacity(
+              opacity: 0.95,
+              child: Image.asset(
+                'images/npc/ghost.png',
+                fit: BoxFit.cover,
+              ),
             ),
           ),
         ),
@@ -755,7 +766,14 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   Widget _buildVignette() {
-    double intensity = _game.currentScene == GameScene.attic ? 0.7 : 0.4;
+    double intensity = 0.4;
+    if (_game.currentScene == GameScene.attic) {
+      intensity = _flashlightOn ? 0.7 : 0.95; // Almost pitch black without flashlight
+    } else if (_game.currentScene == GameScene.inside && _lightsOff) {
+      intensity = 0.8;
+    }
+    final double o1 = intensity.clamp(0.0, 1.0).toDouble();
+    final double o2 = (intensity + 0.3).clamp(0.0, 1.0).toDouble();
     return Positioned.fill(
       child: IgnorePointer(
         child: Container(
@@ -765,8 +783,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
               radius: 1.0,
               colors: [
                 Colors.transparent,
-                Colors.black.withOpacity(intensity),
-                Colors.black.withOpacity(intensity + 0.3),
+                Colors.black.withOpacity(o1),
+                Colors.black.withOpacity(o2),
               ],
               stops: const [0.3, 0.75, 1.0],
             ),
@@ -848,36 +866,74 @@ class _PlayGameScreenState extends State<PlayGameScreen>
           // Action button (right side)
           Padding(
             padding: const EdgeInsets.only(right: 20),
-            child: GestureDetector(
-              onTap: _handleInteract,
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: _canInteract()
-                      ? Colors.amber.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: _canInteract()
-                        ? Colors.amber.withOpacity(0.5)
-                        : Colors.white.withOpacity(0.1),
-                    width: _canInteract() ? 2 : 1,
+            child: Row(
+              children: [
+                // Flashlight toggle button (only in attic)
+                if (_game.currentScene == GameScene.attic)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _flashlightOn = !_flashlightOn;
+                      });
+                      _sfxPlayer.play(AssetSource('switch.mp3')); // generic sound
+                    },
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        color: _flashlightOn
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: _flashlightOn
+                                ? Colors.white.withOpacity(0.5)
+                                : Colors.white.withOpacity(0.15)),
+                      ),
+                      child: Icon(
+                        _flashlightOn ? Icons.highlight : Icons.highlight_outlined,
+                        color: _flashlightOn
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.4),
+                        size: 32,
+                      ),
+                    ),
                   ),
-                ),
-                child: Center(
-                  child: Text(
-                    'E',
-                    style: TextStyle(
+
+                // Interact / Action button
+                GestureDetector(
+                  onTap: _handleInteract,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
                       color: _canInteract()
-                          ? Colors.amber
-                          : Colors.white.withOpacity(0.3),
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                          ? Colors.amber.withOpacity(0.15)
+                          : Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: _canInteract()
+                            ? Colors.amber.withOpacity(0.5)
+                            : Colors.white.withOpacity(0.1),
+                        width: _canInteract() ? 2 : 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'E',
+                        style: TextStyle(
+                          color: _canInteract()
+                              ? Colors.amber
+                              : Colors.white.withOpacity(0.3),
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -978,17 +1034,43 @@ class _GameSpritePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final frameW = image.width / columns;
-    final frameH = image.height / rows;
+    if (columns <= 0 || rows <= 0 || image.width <= 0 || image.height <= 0) return;
+    if (size.width <= 0 || size.height <= 0) return;
 
-    final srcRect = Rect.fromLTWH(
-      col * frameW,
-      row * frameH,
-      frameW,
-      frameH,
-    );
+    final int safeColumns = columns <= 0 ? 1 : columns;
+    final int safeRows = rows <= 0 ? 1 : rows;
 
+    final double frameW = image.width / safeColumns;
+    final double frameH = image.height / safeRows;
+
+    int safeCol = col;
+    int safeRow = row;
+    if (safeCol < 0) safeCol = 0;
+    if (safeRow < 0) safeRow = 0;
+    if (safeCol >= safeColumns) safeCol = safeColumns - 1;
+    if (safeRow >= safeRows) safeRow = safeRows - 1;
+
+    double srcX = safeCol * frameW;
+    double srcY = safeRow * frameH;
+
+    // Clamp X and Y to not exceed image dimensions
+    if (srcX < 0) srcX = 0;
+    if (srcY < 0) srcY = 0;
+    if (srcX >= image.width) srcX = (image.width - frameW).clamp(0.0, image.width.toDouble());
+    if (srcY >= image.height) srcY = (image.height - frameH).clamp(0.0, image.height.toDouble());
+
+    // Adjust width and height so we never read out of bounds (floating point imprecision)
+    double srcW = frameW;
+    double srcH = frameH;
+    if (srcX + srcW > image.width) srcW = image.width - srcX;
+    if (srcY + srcH > image.height) srcH = image.height - srcY;
+
+    if (srcW <= 0 || srcH <= 0) return;
+
+    final srcRect = Rect.fromLTWH(srcX, srcY, srcW, srcH);
     final dstRect = Rect.fromLTWH(0, 0, size.width, size.height);
+    if (srcRect.isEmpty || !srcRect.isFinite || dstRect.isEmpty || !dstRect.isFinite) return;
+    
     canvas.drawImageRect(image, srcRect, dstRect, Paint());
   }
 

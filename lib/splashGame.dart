@@ -1113,18 +1113,25 @@ class _SpritePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final frameW = image.width / columns;
-    final frameH = image.height / rows;
+    if (columns <= 0 || rows <= 0 || image.width <= 0 || image.height <= 0) return;
 
-    // Cắt đúng 1 frame từ sprite sheet
-    final srcRect = Rect.fromLTWH(
-      col * frameW,
-      row * frameH,
-      frameW,
-      frameH,
-    );
+    final double frameW = image.width / columns;
+    final double frameH = image.height / rows;
 
-    // Vẽ lên canvas với kích thước hiển thị
+    double srcX = col * frameW;
+    double srcY = row * frameH;
+
+    if (srcX < 0) srcX = 0;
+    if (srcY < 0) srcY = 0;
+    if (srcX >= image.width) srcX = (image.width - frameW).clamp(0.0, image.width.toDouble());
+    if (srcY >= image.height) srcY = (image.height - frameH).clamp(0.0, image.height.toDouble());
+
+    double srcW = frameW;
+    double srcH = frameH;
+    if (srcX + srcW > image.width) srcW = image.width - srcX;
+    if (srcY + srcH > image.height) srcH = image.height - srcY;
+
+    final srcRect = Rect.fromLTWH(srcX, srcY, srcW, srcH);
     final dstRect = Rect.fromLTWH(0, 0, size.width, size.height);
 
     canvas.drawImageRect(image, srcRect, dstRect, Paint());
