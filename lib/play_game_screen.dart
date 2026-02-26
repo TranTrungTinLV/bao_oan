@@ -32,6 +32,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   late AudioPlayer _cryPlayer;
   late AudioPlayer _heartbeatPlayer;
   late AudioPlayer _envSfxPlayer;
+  late AudioPlayer _whisperPlayer;
   bool _musicStarted = false;
   bool _isHeartbeatPlaying = false;
 
@@ -66,6 +67,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   bool _showNoiseHint = false;
   bool _showFuneralIllusions = false;
   bool _showDiaryContent = false;
+  bool _ghostsVisible = false; // Bóng ma đã xuất hiện chưa
+  int _ghostFlickerCount = 0; // Số lần nhấp nháy
+  Timer? _ghostFlickerTimer;
+  double _jumpscareHeadY = -1.0; // Vị trí đầu người rơi (-1 = trên đỉnh, 0.3 = giữa mặt)
 
   // Scene-specific
   bool _doorOpening = false;
@@ -95,6 +100,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     _cryPlayer = AudioPlayer();
     _heartbeatPlayer = AudioPlayer();
     _envSfxPlayer = AudioPlayer();
+    _whisperPlayer = AudioPlayer();
     _loadSpriteImages();
 
     _flickerController = AnimationController(
@@ -255,16 +261,16 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       _flashlightOn = true;
       _showFuneralIllusions = true;
     } else if (scene != GameScene.inside || !_game.isPowerOff) {
-        _chantingPlayer.stop();
-        _cryPlayer.stop();
-        _showFuneralIllusions = false;
+      _chantingPlayer.stop();
+      _cryPlayer.stop();
+      _showFuneralIllusions = false;
     }
 
     switch (scene) {
       case GameScene.inside:
-        if (!_game.metBaNam) {
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
+        if (!_game.wentToSleep) {
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted && _game.getDialogsForScene().isNotEmpty) {
               setState(() {
                 _game.isDialogActive = true;
                 _game.dialogIndex = 0;
@@ -284,7 +290,11 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                 _showNoiseHint = true;
               });
               Future.delayed(const Duration(milliseconds: 500), () {
-                if (mounted) setState(() { _shakeX = 0; _shakeY = 0; });
+                if (mounted)
+                  setState(() {
+                    _shakeX = 0;
+                    _shakeY = 0;
+                  });
               });
               Future.delayed(const Duration(seconds: 1), () {
                 if (mounted) {
@@ -309,8 +319,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
               });
             }
           });
-        }
-        else if (!_game.wentToAttic && _game.heardNoise2) {
+        } else if (!_game.wentToAttic && _game.heardNoise2) {
           // Lần 2 lên mới thực sự gặp ma và bị nhốt (cúp điện)
           _game.wentToAttic = true;
           _lightsOff = true;
@@ -364,42 +373,76 @@ class _PlayGameScreenState extends State<PlayGameScreen>
           _sfxPlayer.setVolume(0.4);
         }
       case GameScene.inside:
-        if (!_game.metBaNam) {
+        if (!_game.wentToSleep) {
+          _game.wentToSleep = true;
+          _startSleepingEvent();
+        } else if (_game.wentToSleep &&
+            _game.isPowerOff &&
+            !_game.lookedInMirror) {
+          // Xong thoại giật mình 3h15 sáng -> đợi người chơi điều khiển đi soi gương
+        } else if (_game.lookedInMirror && !_game.morningArrived) {
+          _game.morningArrived = true;
+          // Kéo bọc rác ra ngoài đụng Bà Năm
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted)
+              setState(() {
+                _game.isDialogActive = true;
+                _game.dialogIndex = 0;
+              });
+          });
+        } else if (_game.morningArrived && !_game.metBaNam) {
           setState(() {
             _game.metBaNam = true;
           });
-          // Không bật isDialogActive ở đây vì Dialog thứ 2 đòi hỏi phải isNearSofa
-        }
-        else if (_game.foundOldItems && !_game.heardNoise1) {
+          // Nói chuyện xong với Bà Năm, nhường quyền đi xem đồ cũ Sofa
+        } else if (_game.foundOldItems && !_game.heardNoise1) {
           // Sau khi nhặt được mớ đồ cũ -> Trigger tiếng chuột lần 1
           _noiseTimer = Timer(const Duration(seconds: 3), () {
             if (mounted) {
-              try { _sfxPlayer.play(AssetSource('scratching.mp3')); _sfxPlayer.setVolume(0.4); } catch (_) {}
+              try {
+                _sfxPlayer.play(AssetSource('scratching.mp3'));
+                _sfxPlayer.setVolume(0.4);
+              } catch (_) {}
               setState(() {
                 _game.heardNoise1 = true;
                 _showNoiseHint = true;
               });
               Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) setState(() { _game.isDialogActive = true; _game.dialogIndex = 0; });
+                if (mounted)
+                  setState(() {
+                    _game.isDialogActive = true;
+                    _game.dialogIndex = 0;
+                  });
               });
             }
           });
-        }
-        else if (_game.visitedAtticFirstTime && !_game.heardNoise2) {
+        } else if (_game.visitedAtticFirstTime && !_game.heardNoise2) {
           // Sau khi lên gác bị lừa, xuống Sofa lại -> Tiếng động 2 dồn dập
-           _noiseTimer = Timer(const Duration(seconds: 2), () {
+          _noiseTimer = Timer(const Duration(seconds: 2), () {
             if (mounted) {
-              try { _sfxPlayer.play(AssetSource('scratching.mp3')); _sfxPlayer.setVolume(1.0); } catch (_) {} // Dồn dập
+              try {
+                _sfxPlayer.play(AssetSource('scratching.mp3'));
+                _sfxPlayer.setVolume(1.0);
+              } catch (_) {} // Dồn dập
               setState(() {
                 _game.heardNoise2 = true;
-                _shakeX = 5; _shakeY = 3;
+                _shakeX = 5;
+                _shakeY = 3;
                 _showNoiseHint = true;
               });
               Future.delayed(const Duration(milliseconds: 500), () {
-                if (mounted) setState(() { _shakeX = 0; _shakeY = 0; });
+                if (mounted)
+                  setState(() {
+                    _shakeX = 0;
+                    _shakeY = 0;
+                  });
               });
               Future.delayed(const Duration(seconds: 1), () {
-                if (mounted) setState(() { _game.isDialogActive = true; _game.dialogIndex = 0; });
+                if (mounted)
+                  setState(() {
+                    _game.isDialogActive = true;
+                    _game.dialogIndex = 0;
+                  });
               });
             }
           });
@@ -433,6 +476,106 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       _showTornPaper = false;
       _game.solvedTornPaper = true;
     });
+    // Giải xong bùa rách vào buổi sáng -> Thức dậy buổi sáng
+    _wakeUpMorningEvent();
+  }
+
+  void _startSleepingEvent() async {
+    setState(() => _isTransitioning = true);
+    setState(() => _fadeOpacity = 1.0);
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+
+    _envSfxPlayer.setReleaseMode(ReleaseMode.loop);
+    _envSfxPlayer.play(AssetSource('wind_howl.mp3'));
+
+    await Future.delayed(const Duration(seconds: 3)); // Ngủ 3 giây
+
+    // Tỉnh dậy 3h15 AM - Cúp điện
+    _bgMusic.stop();
+    setState(() {
+      _game.isPowerOff = true;
+      _lightsOff = true;
+      _flashlightOn = true;
+      _showFuneralIllusions = true; // Hiện quan tài trước
+      _ghostsVisible = false; // Bóng ma chưa hiện
+    });
+
+    setState(() => _fadeOpacity = 0.0);
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+    setState(() => _isTransitioning = false);
+
+    // --- Kiên giật mình thấy quan tài ---
+    setState(() { _shakeX = 15; _shakeY = 10; });
+    try { _sfxPlayer.play(AssetSource('jumpscare_mirror.mp3')); _sfxPlayer.setVolume(0.6); } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() { _shakeX = 0; _shakeY = 0; });
+
+    // --- Bắt đầu nhấp nháy bóng ma + tiếng xì xào nhỏ ---
+    try {
+      _whisperPlayer.setReleaseMode(ReleaseMode.loop);
+      _whisperPlayer.play(AssetSource('whisper_crowd.mp3'));
+      _whisperPlayer.setVolume(0.15); // Nhỏ nhỏ lúc đầu
+    } catch (_) {}
+    _ghostFlickerCount = 0;
+    _ghostFlickerTimer?.cancel();
+    _ghostFlickerTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      _ghostFlickerCount++;
+      setState(() => _ghostsVisible = !_ghostsVisible);
+      if (_ghostFlickerCount >= 8) {
+        // Sau 8 lần nhấp nháy (khoảng 2.4 giây) -> Hiện cố định
+        timer.cancel();
+        setState(() => _ghostsVisible = true);
+        // Tăng tiếng xì xào và bật nhạc đám tang
+        try { _whisperPlayer.setVolume(0.5); } catch (_) {}
+        _chantingPlayer.setReleaseMode(ReleaseMode.loop);
+        _chantingPlayer.play(AssetSource('chanting_nam_mo.mp3'));
+        _chantingPlayer.setVolume(0.5);
+        _cryPlayer.setReleaseMode(ReleaseMode.loop);
+        _cryPlayer.play(AssetSource('funeral_cry_hollow.mp3'));
+        _cryPlayer.setVolume(0.5);
+        // Bật thoại Kiên hoảng loạn
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) setState(() {
+            _game.isDialogActive = true;
+            _game.dialogIndex = 0;
+          });
+        });
+      }
+    });
+  }
+
+  void _wakeUpMorningEvent() async {
+    setState(() => _isTransitioning = true);
+    setState(() => _fadeOpacity = 1.0);
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+
+    _chantingPlayer.stop();
+    _cryPlayer.stop();
+    _whisperPlayer.stop();
+    _bgMusic.play(AssetSource('horror_music_main.mp3'));
+
+    setState(() {
+      _game.isPowerOff = false;
+      _lightsOff = false;
+      _flashlightOn = false;
+      _showFuneralIllusions = false;
+    });
+
+    setState(() => _fadeOpacity = 0.0);
+    await Future.delayed(const Duration(seconds: 1));
+    setState(() => _isTransitioning = false);
+
+    if (mounted && _game.getDialogsForScene().isNotEmpty) {
+      setState(() {
+        _game.isDialogActive = true;
+        _game.dialogIndex = 0;
+      });
+    }
   }
 
   void _onBetelTraySolved() {
@@ -444,40 +587,64 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   void _triggerGhostFlash() async {
-    _sfxPlayer.play(AssetSource('jumpscare_mirror.mp3')); // Dùng file jumpscare_mirror User tải
+    _sfxPlayer.play(AssetSource('jumpscare_mirror.mp3'));
     _sfxPlayer.setVolume(1.0);
-    _envSfxPlayer.play(AssetSource('glitch_sound.mp3')); // Play thêm tiếng Glitch vỡ Tivi
+    _envSfxPlayer.play(AssetSource('glitch_sound.mp3'));
     _envSfxPlayer.setVolume(0.5);
-    
+
+    // Bắt đầu: đầu ở trên đỉnh
     setState(() {
       _showGhostFlash = true;
-      _shakeX = 30; // Extreme shake
-      _shakeY = 30;
-      _game.sanityLevel -= 0.3; // Bị hù sẽ tụt Sanity
-      _checkHeartbeat();
+      _jumpscareHeadY = -1.0;
+      _shakeX = 0;
+      _shakeY = 0;
     });
-    
-    // Quick flashing effect
-    for (int i = 0; i < 5; i++) {
-      await Future.delayed(const Duration(milliseconds: 120));
+
+    // Animation rơi xuống trong 300ms (10 bước)
+    for (int i = 0; i <= 10; i++) {
+      await Future.delayed(const Duration(milliseconds: 30));
       if (!mounted) return;
       setState(() {
-        _showGhostFlash = !_showGhostFlash;
-        _shakeX = _showGhostFlash ? 30 : -30;
+        _jumpscareHeadY = -1.0 + (1.3 * i / 10); // Từ -1.0 đến 0.3
       });
     }
 
+    // Đập vào mặt! Shake cực mạnh + máu loang
+    setState(() {
+      _shakeX = 40;
+      _shakeY = 40;
+      _game.sanityLevel -= 0.3;
+      _checkHeartbeat();
+    });
+
+    // Nhấp nháy vài lần
+    for (int i = 0; i < 4; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+      setState(() {
+        _shakeX = (i % 2 == 0) ? 35 : -35;
+        _shakeY = (i % 2 == 0) ? 25 : -25;
+      });
+    }
+
+    // Kết thúc jumpscare
+    await Future.delayed(const Duration(milliseconds: 200));
     if (mounted) {
       setState(() {
         _showGhostFlash = false;
         _shakeX = 0;
         _shakeY = 0;
+        _jumpscareHeadY = -1.0;
       });
     }
   }
 
   void _startMoving(bool left) {
-    if (_game.isDialogActive || _isTransitioning || _showMandala || _showTornPaper || _showBetelTray) return;
+    if (_game.isDialogActive ||
+        _isTransitioning ||
+        _showMandala ||
+        _showTornPaper ||
+        _showBetelTray) return;
     _movingLeft = left;
     _movingRight = !left;
     _moveTimer?.cancel();
@@ -523,41 +690,63 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   void _handleInteract() {
-    if (_game.isDialogActive || _isTransitioning || _showMandala || _showTornPaper || _showBetelTray) return;
+    if (_game.isDialogActive ||
+        _isTransitioning ||
+        _showMandala ||
+        _showTornPaper ||
+        _showBetelTray) return;
 
-    if (_game.currentScene == GameScene.outside && _game.isNearDoor() && _game.gotKey) {
+    if (_game.currentScene == GameScene.outside &&
+        _game.isNearDoor() &&
+        _game.gotKey) {
       _sfxPlayer.play(AssetSource('creak_door.mp3'));
       _game.enteredHouse = true;
       _transitionToScene(GameScene.inside);
-    } else if (_game.currentScene == GameScene.inside && _game.isNearSofa() && _game.metBaNam && !_game.foundOldItems) {
+    } else if (_game.currentScene == GameScene.inside &&
+        _game.isNearSofa() &&
+        _game.metBaNam &&
+        !_game.foundOldItems) {
       _game.foundOldItems = true;
       _game.isDialogActive = true;
       _game.dialogIndex = 0;
       setState(() {});
-    } else if (_game.currentScene == GameScene.inside && _game.isNearStairs() && _game.heardNoise1 && !_game.visitedAtticFirstTime) {
+    } else if (_game.currentScene == GameScene.inside &&
+        _game.isNearStairs() &&
+        _game.heardNoise1 &&
+        !_game.visitedAtticFirstTime) {
       _sfxPlayer.play(AssetSource('footsteps_gravel.mp3'));
       _game.visitedAtticFirstTime = true;
       _transitionToScene(GameScene.attic);
-    } else if (_game.currentScene == GameScene.inside && _game.isNearStairs() && _game.heardNoise2 && !_game.wentToAttic) {
+    } else if (_game.currentScene == GameScene.inside &&
+        _game.isNearStairs() &&
+        _game.heardNoise2 &&
+        !_game.wentToAttic) {
       _sfxPlayer.play(AssetSource('footsteps_gravel.mp3'));
       _transitionToScene(GameScene.attic);
-    } else if (_game.currentScene == GameScene.attic && _game.playerX < 0.2) { // Xuống nhà
+    } else if (_game.currentScene == GameScene.attic && _game.playerX < 0.2) {
+      // Xuống nhà
       _sfxPlayer.play(AssetSource('footsteps_gravel.mp3'));
-      
+
       // Nếu là đang xuống nhà Lần 1 sau vụ bóng ố vàng
       if (_game.visitedAtticFirstTime && !_game.heardNoise2) {
-        _game.isDialogActive = true; 
+        _game.isDialogActive = true;
         _game.dialogIndex = 0;
       }
-      
+
       _transitionToScene(GameScene.inside);
-    } else if (_game.currentScene == GameScene.inside && _game.isPowerOff && _game.isNearMirror() && !_game.lookedInMirror) {
+    } else if (_game.currentScene == GameScene.inside &&
+        _game.isPowerOff &&
+        _game.isNearMirror() &&
+        !_game.lookedInMirror) {
       _triggerGhostFlash();
       _game.lookedInMirror = true;
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _showTornPaper = true);
       });
-    } else if (_game.currentScene == GameScene.inside && _game.solvedTornPaper && _game.isNearSofa() && !_game.solvedBetelTray) {
+    } else if (_game.currentScene == GameScene.inside &&
+        _game.solvedTornPaper &&
+        _game.isNearSofa() &&
+        !_game.solvedBetelTray) {
       setState(() => _showBetelTray = true);
     }
   }
@@ -569,7 +758,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     _moveTimer?.cancel();
     _walkAnimTimer?.cancel();
     _noiseTimer?.cancel();
+    _ghostFlickerTimer?.cancel();
     _npcAnimTimer?.cancel();
+    _whisperPlayer.stop();
+    _whisperPlayer.dispose();
     _bgMusic.stop();
     _bgMusic.dispose();
     _sfxPlayer.stop();
@@ -580,7 +772,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     _chantingPlayer.dispose();
     _cryPlayer.stop();
     _cryPlayer.dispose();
-    
+
     _heartbeatPlayer.stop();
     _heartbeatPlayer.dispose();
     _envSfxPlayer.stop();
@@ -618,7 +810,7 @@ class _PlayGameScreenState extends State<PlayGameScreen>
             _buildPlayer(size),
 
             // Funeral Illusions (Ghosts)
-            if (_showFuneralIllusions) _buildFuneralIllusions(),
+            if (_showFuneralIllusions) _buildFuneralIllusions(size),
 
             // Interaction hints
             _buildInteractionHints(size),
@@ -660,9 +852,13 @@ class _PlayGameScreenState extends State<PlayGameScreen>
               ),
 
             // Controls
-            if (!_game.isDialogActive && !_showMandala && !_showTornPaper && !_showBetelTray) _buildControls(size),
-            
-            // Sanity Bar 
+            if (!_game.isDialogActive &&
+                !_showMandala &&
+                !_showTornPaper &&
+                !_showBetelTray)
+              _buildControls(size),
+
+            // Sanity Bar
             if (_game.currentScene != GameScene.outside)
               Positioned(
                 top: 16,
@@ -689,7 +885,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                   Navigator.pushReplacementNamed(context, HomeGame.id);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(16),
@@ -700,7 +897,9 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                     children: [
                       Icon(Icons.arrow_back, color: Colors.white38, size: 16),
                       SizedBox(width: 4),
-                      Text('Thoát', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                      Text('Thoát',
+                          style:
+                              TextStyle(color: Colors.white38, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -712,7 +911,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
               top: 12,
               right: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(8),
@@ -745,7 +945,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Tinh Thần', style: TextStyle(color: Colors.white70, fontSize: 10)),
+          const Text('Tinh Thần',
+              style: TextStyle(color: Colors.white70, fontSize: 10)),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -805,8 +1006,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
 
   // Load sprite sheet images
   Future<void> _loadSpriteImages() async {
-    _normalSpriteImage = await _loadImage('images/character/png sheet/normal.png');
-    _flashlightSpriteImage = await _loadImage('images/character/png sheet/with_flashlight.png');
+    _normalSpriteImage =
+        await _loadImage('images/character/png sheet/normal.png');
+    _flashlightSpriteImage =
+        await _loadImage('images/character/png sheet/with_flashlight.png');
     _baHuyenSpriteImage = await _loadImage('images/npc/ba_huyen.png');
     if (mounted) setState(() {});
     // Start NPC idle animation
@@ -892,8 +1095,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       }
     }
 
-    // Bà Năm - inside scene, before meeting
-    if (_game.currentScene == GameScene.inside && !_game.metBaNam) {
+    // Bà Năm - inside scene, chỉ xuất hiện Ngày 2 (sau khi morningArrived)
+    if (_game.currentScene == GameScene.inside && _game.morningArrived && !_game.metBaNam) {
       npcs.add(Positioned(
         left: size.width * 0.05,
         top: groundY,
@@ -916,16 +1119,23 @@ class _PlayGameScreenState extends State<PlayGameScreen>
         _game.gotKey &&
         _game.isNearDoor()) {
       hints.add(_buildHintBubble(
-        size, 0.48, '🚪 Nhấn [E] để mở cửa', Colors.amber,
+        size,
+        0.48,
+        '🚪 Nhấn [E] để mở cửa',
+        Colors.amber,
       ));
     }
 
-    // Bà Năm interaction
+    // Bà Năm interaction (chỉ Ngày 2)
     if (_game.currentScene == GameScene.inside &&
+        _game.morningArrived &&
         _game.isNearBaNam() &&
         !_game.metBaNam) {
       hints.add(_buildHintBubble(
-        size, _game.baNamX, '[E] Nói chuyện', Colors.blue,
+        size,
+        _game.baNamX,
+        '[E] Nói chuyện',
+        Colors.blue,
       ));
     }
 
@@ -935,7 +1145,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
         !_game.foundOldItems &&
         _game.isNearSofa()) {
       hints.add(_buildHintBubble(
-        size, 0.25, '🔍 Nhấn [E] để xem đồ cũ', Colors.yellow,
+        size,
+        0.25,
+        '🔍 Nhấn [E] để xem đồ cũ',
+        Colors.yellow,
       ));
     }
 
@@ -944,7 +1157,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
         _game.heardNoise1 &&
         _game.isNearStairs()) {
       hints.add(_buildHintBubble(
-        size, 0.72, '⬆️ Nhấn [E] lên gác mái', Colors.red,
+        size,
+        0.72,
+        '⬆️ Nhấn [E] lên gác mái',
+        Colors.red,
       ));
     }
 
@@ -998,21 +1214,42 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   }
 
   Widget _buildGhostFlash(Size size) {
+    // Tính scale: càng gần mặt càng to (phóng to từ 0.5 lên 3.0)
+    double progress = ((_jumpscareHeadY + 1.0) / 1.3).clamp(0.0, 1.0);
+    double headScale = 0.5 + progress * 2.5;
+    double bloodOpacity = (progress * 0.7).clamp(0.0, 0.7);
+
     return Positioned.fill(
-      child: Container(
-        color: Colors.red.withOpacity(0.6), // Bloody red flash
-        child: Center(
-          child: Transform.scale(
-            scale: 2.5, // Jump into face
-            child: Opacity(
-              opacity: 0.95,
-              child: Image.asset(
-                'images/npc/ghost.png',
-                fit: BoxFit.cover,
+      child: Stack(
+        children: [
+          // Màn máu đỏ loang dần
+          Container(
+            color: Colors.red.withOpacity(bloodOpacity),
+          ),
+          // Đầu người rơi xuống
+          Positioned(
+            top: size.height * _jumpscareHeadY,
+            left: (size.width - size.width * 0.5) / 2,
+            child: Transform.scale(
+              scale: headScale,
+              child: SizedBox(
+                width: size.width * 0.5,
+                height: size.width * 0.5,
+                child: Image.asset(
+                  'assets/jumpscare_head.png',
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
           ),
-        ),
+          // Vết máu bắn tung toé khi chạm mặt
+          if (progress > 0.9)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _BloodSplatterPainter(),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1020,7 +1257,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   Widget _buildVignette() {
     double intensity = 0.4;
     if (_game.currentScene == GameScene.attic) {
-      intensity = _flashlightOn ? 0.7 : 0.95; // Almost pitch black without flashlight
+      intensity =
+          _flashlightOn ? 0.7 : 0.95; // Almost pitch black without flashlight
     } else if (_game.currentScene == GameScene.inside && _lightsOff) {
       intensity = 0.8;
     }
@@ -1127,7 +1365,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                       setState(() {
                         _flashlightOn = !_flashlightOn;
                       });
-                      _sfxPlayer.play(AssetSource('switch.mp3')); // generic sound
+                      _sfxPlayer
+                          .play(AssetSource('switch.mp3')); // generic sound
                     },
                     child: Container(
                       width: 56,
@@ -1144,7 +1383,9 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                                 : Colors.white.withOpacity(0.15)),
                       ),
                       child: Icon(
-                        _flashlightOn ? Icons.highlight : Icons.highlight_outlined,
+                        _flashlightOn
+                            ? Icons.highlight
+                            : Icons.highlight_outlined,
                         color: _flashlightOn
                             ? Colors.white
                             : Colors.white.withOpacity(0.4),
@@ -1192,16 +1433,39 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       ),
     );
   }
+
   bool _canInteract() {
-    if (_game.currentScene == GameScene.outside && _game.gotKey && _game.isNearDoor()) return true;
-    if (_game.currentScene == GameScene.inside && _game.metBaNam && !_game.foundOldItems && _game.isNearSofa()) return true;
-    if (_game.currentScene == GameScene.inside && _game.heardNoise1 && _game.isNearStairs()) return true;
-    if (_game.currentScene == GameScene.attic && _game.playerX < 0.2) return true; // Cầu thang xuống
-    if (_game.currentScene == GameScene.inside && _game.isPowerOff && _game.isNearMirror() && !_game.lookedInMirror) return true;
-    if (_game.currentScene == GameScene.inside && _game.solvedTornPaper && _game.isNearSofa() && !_game.solvedBetelTray) return true;
-    if (_game.currentScene == GameScene.outside && _game.isNearBaHuyen() && !_game.metBaHuyen) return true;
-    if (_game.currentScene == GameScene.inside && _game.isNearBaNam() && !_game.metBaNam) return true;
-    if (_game.currentScene == GameScene.attic && _game.isNearDiary() && !_game.foundDiary && _game.wentToAttic) return true;
+    if (_game.currentScene == GameScene.outside &&
+        _game.gotKey &&
+        _game.isNearDoor()) return true;
+    if (_game.currentScene == GameScene.inside &&
+        _game.metBaNam &&
+        !_game.foundOldItems &&
+        _game.isNearSofa()) return true;
+    if (_game.currentScene == GameScene.inside &&
+        _game.heardNoise1 &&
+        _game.isNearStairs()) return true;
+    if (_game.currentScene == GameScene.attic && _game.playerX < 0.2)
+      return true; // Cầu thang xuống
+    if (_game.currentScene == GameScene.inside &&
+        _game.isPowerOff &&
+        _game.isNearMirror() &&
+        !_game.lookedInMirror) return true;
+    if (_game.currentScene == GameScene.inside &&
+        _game.solvedTornPaper &&
+        _game.isNearSofa() &&
+        !_game.solvedBetelTray) return true;
+    if (_game.currentScene == GameScene.outside &&
+        _game.isNearBaHuyen() &&
+        !_game.metBaHuyen) return true;
+    if (_game.currentScene == GameScene.inside &&
+        _game.morningArrived &&
+        _game.isNearBaNam() &&
+        !_game.metBaNam) return true;
+    if (_game.currentScene == GameScene.attic &&
+        _game.isNearDiary() &&
+        !_game.foundDiary &&
+        _game.wentToAttic) return true;
     return false;
   }
 
@@ -1244,7 +1508,8 @@ class _PlayGameScreenState extends State<PlayGameScreen>
               ),
               const SizedBox(height: 40),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.red.withOpacity(0.4)),
                   borderRadius: BorderRadius.circular(4),
@@ -1333,53 +1598,202 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     );
   }
 
-  Widget _buildFuneralIllusions() {
+  Widget _buildFuneralIllusions(Size size) {
     return Positioned.fill(
       child: IgnorePointer(
-        child: Opacity(
-          opacity: 0.6,
-          child: Stack(
-            children: [
-              // Red ambient glow for the altar illusion
-              Positioned(
-                bottom: 150,
-                left: 100,
-                child: Container(
-                  width: 150,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.2),
-                    boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.6), blurRadius: 40)],
-                    shape: BoxShape.circle,
+        child: Stack(
+          children: [
+            // Lớp sương mù đỏ bao phủ
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0.0, 0.3),
+                    radius: 0.8,
+                    colors: [
+                      Colors.red.withOpacity(0.08),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
-              // Silhouette Ghost 1
-              Positioned(
-                bottom: 120,
-                left: 80,
-                child: Icon(Icons.person, size: 100, color: Colors.black.withOpacity(0.8)),
+            ),
+
+            // === QUAN TÀI (Dùng hình PNG thật) ===
+            Positioned(
+              left: size.width * 0.25,
+              bottom: size.height * 0.18,
+              child: Container(
+                decoration: BoxDecoration(
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.15),
+                      blurRadius: 60,
+                      spreadRadius: 15,
+                    ),
+                  ],
+                ),
+                child: Image.asset(
+                  'assets/coffin_funeral.png',
+                  width: size.width * 0.35,
+                  fit: BoxFit.contain,
+                  opacity: const AlwaysStoppedAnimation(0.85),
+                ),
               ),
-              // Silhouette Ghost 2
-              Positioned(
-                bottom: 130,
-                left: 170,
-                child: Icon(Icons.person, size: 90, color: Colors.black.withOpacity(0.8)),
+            ),
+
+            // === BÁT NHANG + 3 CÂY NHANG ===
+            Positioned(
+              left: size.width * 0.38,
+              bottom: size.height * 0.36,
+              child: Column(
+                children: [
+                  // Khói nhang mờ ảo
+                  Container(
+                    width: 20,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.grey.withOpacity(0.3),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Bát nhang
+                  Container(
+                    width: 32,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: Colors.orange[900],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(3),
+                        topRight: Radius.circular(3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: List.generate(3, (_) => Container(
+                        width: 2,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.orange,
+                          boxShadow: [
+                            BoxShadow(color: Colors.red.withOpacity(0.8), blurRadius: 6, spreadRadius: 1),
+                          ],
+                        ),
+                      )),
+                    ),
+                  ),
+                ],
               ),
-              // Fake Altar/Coffin box
+            ),
+
+            // === ẢNH THỜ ===
+            Positioned(
+              left: size.width * 0.39,
+              bottom: size.height * 0.42,
+              child: Container(
+                width: 28,
+                height: 38,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.black, width: 2),
+                  color: Colors.white12,
+                  boxShadow: [
+                    BoxShadow(color: Colors.yellow.withOpacity(0.1), blurRadius: 10),
+                  ],
+                ),
+                child: Icon(Icons.person, color: Colors.black.withOpacity(0.4), size: 20),
+              ),
+            ),
+
+            // === 2 CÂY NẾN 2 BÊN ===
+            _buildCandle(size, 0.22, 0.30),
+            _buildCandle(size, 0.55, 0.30),
+
+            // === BÓNG MA (CHỈ HIỆN KHI _ghostsVisible) ===
+            if (_ghostsVisible) ...[
+              // Ảnh nhóm 6 người phía sau quan tài (hoạt ảnh chính)
               Positioned(
-                bottom: 100,
-                left: 110,
-                child: Container(
-                  width: 100,
-                  height: 40,
-                  color: Colors.black.withOpacity(0.9),
-                  child: const Center(
-                    child: Icon(Icons.lens, size: 8, color: Colors.redAccent), // Fake incense
+                left: size.width * 0.10,
+                bottom: size.height * 0.20,
+                child: Opacity(
+                  opacity: 0.7,
+                  child: Image.asset(
+                    'assets/ghost_silhouette.png',
+                    width: size.width * 0.65,
+                    fit: BoxFit.contain,
+                    color: Colors.black.withOpacity(0.8),
+                    colorBlendMode: BlendMode.srcATop,
                   ),
                 ),
               ),
+              // Bóng đơn lẻ rải thêm 2 bên tạo chiều sâu
+              _buildGhostSilhouette(size, 0.0, 0.16, 100, 0.4),
+              _buildGhostSilhouette(size, 0.78, 0.18, 90, 0.5, flip: true),
+              _buildGhostSilhouette(size, 0.88, 0.14, 70, 0.25),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCandle(Size size, double xPercent, double bottomPercent) {
+    return Positioned(
+      left: size.width * xPercent,
+      bottom: size.height * bottomPercent,
+      child: Column(
+        children: [
+          // Ngọn lửa
+          Container(
+            width: 6,
+            height: 10,
+            decoration: BoxDecoration(
+              color: Colors.orange,
+              borderRadius: BorderRadius.circular(3),
+              boxShadow: [
+                BoxShadow(color: Colors.yellow.withOpacity(0.6), blurRadius: 12, spreadRadius: 4),
+                BoxShadow(color: Colors.orange.withOpacity(0.4), blurRadius: 20, spreadRadius: 6),
+              ],
+            ),
+          ),
+          // Thân nến
+          Container(
+            width: 4,
+            height: 20,
+            color: Colors.white70,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGhostSilhouette(Size size, double xPercent, double bottomPercent, double heightSize, double opacity, {bool flip = false}) {
+    return Positioned(
+      left: size.width * xPercent,
+      bottom: size.height * bottomPercent,
+      child: Opacity(
+        opacity: opacity,
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()..scale(flip ? -1.0 : 1.0, 1.0),
+          child: Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(color: Colors.red.withOpacity(0.1), blurRadius: 25, spreadRadius: 5),
+              ],
+            ),
+            child: Image.asset(
+              'assets/ghost_single.png',
+              height: heightSize,
+              fit: BoxFit.contain,
+              color: Colors.black.withOpacity(0.85),
+              colorBlendMode: BlendMode.srcATop,
+            ),
           ),
         ),
       ),
@@ -1405,7 +1819,8 @@ class _GameSpritePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (columns <= 0 || rows <= 0 || image.width <= 0 || image.height <= 0) return;
+    if (columns <= 0 || rows <= 0 || image.width <= 0 || image.height <= 0)
+      return;
     if (size.width <= 0 || size.height <= 0) return;
 
     final int safeColumns = columns <= 0 ? 1 : columns;
@@ -1427,8 +1842,10 @@ class _GameSpritePainter extends CustomPainter {
     // Clamp X and Y to not exceed image dimensions
     if (srcX < 0) srcX = 0;
     if (srcY < 0) srcY = 0;
-    if (srcX >= image.width) srcX = (image.width - frameW).clamp(0.0, image.width.toDouble());
-    if (srcY >= image.height) srcY = (image.height - frameH).clamp(0.0, image.height.toDouble());
+    if (srcX >= image.width)
+      srcX = (image.width - frameW).clamp(0.0, image.width.toDouble());
+    if (srcY >= image.height)
+      srcY = (image.height - frameH).clamp(0.0, image.height.toDouble());
 
     // Adjust width and height so we never read out of bounds (floating point imprecision)
     double srcW = frameW;
@@ -1440,8 +1857,11 @@ class _GameSpritePainter extends CustomPainter {
 
     final srcRect = Rect.fromLTWH(srcX, srcY, srcW, srcH);
     final dstRect = Rect.fromLTWH(0, 0, size.width, size.height);
-    if (srcRect.isEmpty || !srcRect.isFinite || dstRect.isEmpty || !dstRect.isFinite) return;
-    
+    if (srcRect.isEmpty ||
+        !srcRect.isFinite ||
+        dstRect.isEmpty ||
+        !dstRect.isFinite) return;
+
     canvas.drawImageRect(image, srcRect, dstRect, Paint());
   }
 
@@ -1451,4 +1871,42 @@ class _GameSpritePainter extends CustomPainter {
         row != oldDelegate.row ||
         image != oldDelegate.image;
   }
+}
+
+// Vẽ vết máu bắn tung toé khi đầu đập vào mặt
+class _BloodSplatterPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.red.withOpacity(0.8)
+      ..style = PaintingStyle.fill;
+
+    final random = Random(42); // Seed cố định cho vệt máu không nhảy lung tung
+
+    // Vẽ 15 vệt máu bắn random
+    for (int i = 0; i < 15; i++) {
+      double x = random.nextDouble() * size.width;
+      double y = random.nextDouble() * size.height;
+      double radius = 5 + random.nextDouble() * 25;
+
+      paint.color = Colors.red.withOpacity(0.4 + random.nextDouble() * 0.5);
+      canvas.drawCircle(Offset(x, y), radius, paint);
+
+      // Vệt máu chảy dài xuống
+      final drip = Path()
+        ..moveTo(x - radius * 0.3, y)
+        ..lineTo(x + radius * 0.3, y)
+        ..lineTo(x + radius * 0.1, y + radius * 2 + random.nextDouble() * 40)
+        ..lineTo(x - radius * 0.1, y + radius * 2 + random.nextDouble() * 40)
+        ..close();
+      canvas.drawPath(drip, paint);
+    }
+
+    // Vệt máu lớn ở giữa (nơi đầu đập vào)
+    paint.color = Colors.red.withOpacity(0.6);
+    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.35), 60, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

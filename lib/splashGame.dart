@@ -43,21 +43,13 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
 
   // ── Master timeline ──
   late AnimationController _masterController;
-  // Tổng thời gian trailer (giây)
-  static const double _totalDuration = 120.0; // kéo dài cho bóng đèn đung đưa
+  static const double _totalDuration = 90.0;
 
   // ── Character animation ──
   late AnimationController _spriteController;
   int _currentFrame = 0;
-  // Sprite sheet layout: 512x512, 8 columns
-  // Row 0: Idle (2 frames)
-  // Row 1: Walk (7 frames)
-  // Row 2: Run start (1 frame)
-  // Row 3: Run (6 frames)
-  // Row 4: Crouch/Duck (4 frames)
-  // Row 5: Look around (8 frames)
   static const int _spriteColumns = 8;
-  static const int _spriteRows = 8; // 512/64 = 8 hàng
+  static const int _spriteRows = 8;
 
   // ── Parallax ──
   double _parallaxOffset = 0.0;
@@ -67,50 +59,56 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
   double _sceneTime = 0.0;
 
   // ── Effects ──
-  double _screenOpacity = 0.0; // cho fade in/out
+  double _screenOpacity = 0.0;
   double _flickerOpacity = 1.0;
   double _redFlashOpacity = 0.0;
   double _shakeX = 0.0;
   double _shakeY = 0.0;
   bool _showTitle = false;
-  bool _showStoryText1 = false;
-  bool _showStoryText2 = false;
-  bool _showStoryText3 = false;
+  bool _showStoryText = false;
   bool _showEnding = false;
   bool _showSpeechBubble = false;
   bool _characterVisible = false;
+  bool _showYoungKien = false;
+  bool _showParents = false;
   bool _isWalking = false;
   bool _isLookingAround = false;
   bool _useFlashlight = false;
-  double _characterX = -0.15; // vị trí nhân vật (bắt đầu ngoài trái màn hình)
-  // final double _characterY = 0.85; // vị trí Y nhân vật (chân chạm đất)
+  double _characterX = -0.15;
+  double _youngKienX = -0.15;
+  double _parentsX = 0.6;
   double _titleGlowIntensity = 0.0;
   String _currentStoryText = '';
-  int _visibleChars = 0; // cho typewriter effect
+  int _visibleChars = 0;
   Timer? _typewriterTimer;
   double _vignetteIntensity = 0.3;
+  String _currentBackground = 'countryside';
 
   // ── Swinging bulb ──
   bool _showSwingingBulb = false;
   double _bulbSwingAngle = 0.0;
 
-  // ── Speech bubble typewriter ──
-  static const String _speechFullText = 'Đây là đâu?';
+  // ── Speech bubble ──
+  String _speechFullText = 'Đây là đâu?';
   int _speechBubbleChars = 0;
   Timer? _speechBubbleTimer;
 
-  // ── Random for shake ──
   final Random _random = Random();
 
-  // ── Scene definitions (startTime in seconds) ──
-  // Scene 0: 0-3s   - Fade in từ đen, nhạc bắt đầu
-  // Scene 1: 3-7s   - Title "BÁO OAN" hiện lên
-  // Scene 2: 7-13s  - Story text 1
-  // Scene 3a: 13-15s - Camera lia sang phải (chưa thấy nhân vật)
-  // Scene 3b: 15-20s - Nhân vật đi vào từ trái
-  // Scene 4: 20-25s - Character dừng + Speech Bubble "Đây là đâu?"
-  // Scene 5: 25-30s - Slam đen
-  // Scene 6: 30-45s - Bóng đèn đung đưa + nhạc "Kiếp nào dó yêu nhau"
+  // SFX triggers
+
+  bool _playedSchoolSfx = false;
+  bool _playedRainSfx = false;
+
+  // Scene definitions:
+  // 0: 0-3s     Fade in
+  // 1: 3-12s    Đồng lúa quê nhà - Kiên nhỏ đi bộ
+  // 2: 12-22s   Nhà gia đình - Cha mẹ + Kiên
+  // 3: 22-32s   Trường học - Speech bubble
+  // 4: 32-38s   Lên thành phố - Fade đen
+  // 5: 38-50s   Khu phố tối - Đi bộ trong mưa
+  // 6: 50-55s   Slam đen + Jumpscare
+  // 7: 55-90s   Đèn đung đưa + Title
 
   @override
   void initState() {
@@ -184,178 +182,232 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
     _sceneTime = time;
 
     setState(() {
-      // ══════════ SCENE 0: Fade In (0-3s) ══════════
+      // ══════ SCENE 0: Fade In (0-3s) ══════
       if (time < 3.0) {
         _currentScene = 0;
         _screenOpacity = (time / 3.0).clamp(0.0, 1.0);
-        _vignetteIntensity = 0.5;
+        _currentBackground = 'countryside';
+        _vignetteIntensity = 0.3;
       }
-      // ══════════ SCENE 1: Title (3-7s) ══════════
-      else if (time < 7.0) {
+      // ══════ SCENE 1: Đồng Lúa Quê (3-12s) ══════
+      else if (time < 12.0) {
         _currentScene = 1;
         _screenOpacity = 1.0;
-        _showTitle = true;
-        _titleGlowIntensity = ((time - 3.0) / 2.0).clamp(0.0, 1.0);
-        // Shake nhẹ cho title
-        if (time > 4.5) {
-          _shakeX = (_random.nextDouble() - 0.5) * 3;
-          _shakeY = (_random.nextDouble() - 0.5) * 2;
-        }
-      }
-      // ══════════ SCENE 2: Story Text 1 (7-13s) ══════════
-      else if (time < 13.0) {
-        _currentScene = 2;
-        _showTitle = false;
-        _shakeX = 0;
-        _shakeY = 0;
-        if (!_showStoryText1) {
-          _showStoryText1 = true;
-          // 🔊 Tiếng gió rít
-          if (!_playedWind) {
-            _playedWind = true;
-            _sfxPlayer1.play(AssetSource('wind_howl.mp3'));
-            _sfxPlayer1.setVolume(0.5);
-          }
-          _startTypewriter('Một căn trọ cũ kỹ...\nmột bí ẩn không lời giải...');
-        }
-      }
-      // ══════════ SCENE 3a: Camera Pan Right (13-15s) ══════════
-      // Lia camera sang phải, chưa thấy nhân vật
-      else if (time < 15.0) {
-        _currentScene = 3;
-        _showStoryText1 = false;
+        _currentBackground = 'countryside';
+        _showYoungKien = true;
+        _showParents = false;
         _characterVisible = false;
+        _vignetteIntensity = 0.2;
 
-        // Camera lia sang phải
-        double panProgress = ((time - 13.0) / 2.0).clamp(0.0, 1.0);
-        _parallaxOffset = panProgress * 400;
+        double walkP = ((time - 3.0) / 9.0).clamp(0.0, 1.0);
+        _youngKienX = -0.1 + walkP * 0.5;
+        _parallaxOffset = walkP * 200;
 
-        _vignetteIntensity = 0.4;
+        if (!_showStoryText) {
+          _showStoryText = true;
+          _startTypewriter('Trương Thành Kiên\nsinh ra ở một vùng quê nhỏ...');
+        }
+
+        if (!_playedWind) {
+          _playedWind = true;
+          _sfxPlayer1.play(AssetSource('wind_howl.mp3'));
+          _sfxPlayer1.setVolume(0.3);
+        }
       }
-      // ══════════ SCENE 3b: Character Walk In (15-20s) ══════════
-      // Nhân vật đi vào từ bên trái, camera tiếp tục cuộn
-      else if (time < 20.0) {
+      // ══════ SCENE 2: Nhà Gia Đình (12-22s) ══════
+      else if (time < 22.0) {
+        _currentScene = 2;
+        _currentBackground = 'family';
+        _showYoungKien = true;
+        _showParents = true;
+        _characterVisible = false;
+        _vignetteIntensity = 0.2;
+        _parallaxOffset = 0;
+
+        double walkP = ((time - 12.0) / 10.0).clamp(0.0, 1.0);
+        _youngKienX = -0.1 + walkP * 0.35;
+        _parentsX = 0.55;
+
+        if (time >= 12.0 && time < 12.5) {
+          _showStoryText = false;
+        }
+        if (time >= 13.0 && !_showStoryText) {
+          _showStoryText = true;
+          _startTypewriter('Nổi tiếng gan lì từ nhỏ\nchuyện tâm linh cậu ít khi quan tâm');
+        }
+      }
+      // ══════ SCENE 3: Trường Học (22-32s) ══════
+      else if (time < 32.0) {
         _currentScene = 3;
-        _showStoryText1 = false;
+        _currentBackground = 'school';
+        _showYoungKien = false;
+        _showParents = false;
+        _characterVisible = true;
+        _isWalking = time < 27.0;
+        _isLookingAround = time >= 27.0;
+        _useFlashlight = false;
+        _vignetteIntensity = 0.2;
+        _parallaxOffset = 0;
+
+        double walkP = ((time - 22.0) / 5.0).clamp(0.0, 1.0);
+        _characterX = -0.1 + walkP * 0.35;
+
+        if (time >= 22.0 && time < 22.5) {
+          _showStoryText = false;
+        }
+
+        // Speech bubble "Ba nói tìm được chỗ trọ tốt rồi"
+        if (time >= 27.0) {
+          _isWalking = false;
+          _showSpeechBubble = true;
+          if (!_playedSpeechSfx) {
+            _playedSpeechSfx = true;
+            _speechFullText = 'Ba nói tìm được chỗ trọ tốt rồi!';
+            _speechBubbleChars = 0;
+            _sfxPlayer3.setReleaseMode(ReleaseMode.loop);
+            _sfxPlayer3.play(AssetSource('speak-in-game.mp3'));
+            _sfxPlayer3.setVolume(0.2);
+            _speechBubbleTimer = Timer.periodic(
+              const Duration(milliseconds: 100),
+              (timer) {
+                setState(() {
+                  _speechBubbleChars++;
+                  if (_speechBubbleChars >= _speechFullText.length) {
+                    timer.cancel();
+                    _sfxPlayer3.stop();
+                  }
+                });
+              },
+            );
+          }
+        }
+
+        if (!_playedSchoolSfx) {
+          _playedSchoolSfx = true;
+          _sfxPlayer1.stop();
+          _sfxPlayer2.setReleaseMode(ReleaseMode.loop);
+          _sfxPlayer2.play(AssetSource('footsteps_gravel.mp3'));
+          _sfxPlayer2.setVolume(0.3);
+        }
+      }
+      // ══════ SCENE 4: Lên Thành Phố (32-38s) ══════
+      else if (time < 38.0) {
+        _currentScene = 4;
+        _showSpeechBubble = false;
+        _showYoungKien = false;
+        _showParents = false;
+        _characterVisible = false;
+        _speechBubbleTimer?.cancel();
+        _sfxPlayer2.stop();
+        _sfxPlayer3.stop();
+
+        double fadeP = ((time - 32.0) / 1.5).clamp(0.0, 1.0);
+        _screenOpacity = 1.0 - fadeP; // Fade to black
+
+        if (time >= 33.5) {
+          _screenOpacity = 0.0;
+          if (!_showStoryText) {
+            _showStoryText = true;
+            _startTypewriter('Rời quê lên Thành Phố...\nmột mình bước vào bóng tối');
+          }
+        }
+
+        if (!_playedRainSfx) {
+          _playedRainSfx = true;
+          _sfxPlayer1.play(AssetSource('rain_night.mp3'));
+          _sfxPlayer1.setVolume(0.6);
+        }
+      }
+      // ══════ SCENE 5: Khu Phố Tối (38-50s) ══════
+      else if (time < 50.0) {
+        _currentScene = 5;
+        _currentBackground = 'cave';
+        _showStoryText = false;
         _characterVisible = true;
         _isWalking = true;
         _isLookingAround = false;
         _useFlashlight = true;
+        _showYoungKien = false;
+        _showParents = false;
 
-        // Nhân vật đi từ ngoài trái vào trong
-        double walkProgress = ((time - 15.0) / 5.0).clamp(0.0, 1.0);
-        _characterX = -0.15 + walkProgress * 0.55; // từ ngoài trái → 0.40
+        double fadeIn = ((time - 38.0) / 2.0).clamp(0.0, 1.0);
+        _screenOpacity = fadeIn;
 
-        // Tiếp tục cuộn parallax background (tiếp nối từ 400)
-        _parallaxOffset = 400 + walkProgress * 100;
+        double walkP = ((time - 38.0) / 12.0).clamp(0.0, 1.0);
+        _characterX = -0.15 + walkP * 0.55;
+        _parallaxOffset = walkP * 500;
 
-        // Thỉnh thoảng flicker nhẹ
+        _vignetteIntensity = 0.5 + walkP * 0.2;
+
         if ((time * 3).floor() % 7 == 0) {
           _flickerOpacity = 0.7 + _random.nextDouble() * 0.3;
         } else {
           _flickerOpacity = 1.0;
         }
 
-        _vignetteIntensity = 0.4 + walkProgress * 0.2;
-
-        // 🔊 Tiếng bước chân (loop)
         if (!_playedFootsteps) {
           _playedFootsteps = true;
+          _bgMusicPlayer.setVolume(0.9);
           _sfxPlayer2.setReleaseMode(ReleaseMode.loop);
           _sfxPlayer2.play(AssetSource('footsteps_gravel.mp3'));
           _sfxPlayer2.setVolume(0.4);
         }
       }
-      // ══════════ SCENE 4: Character dừng + Speech Bubble (20-25s) ══════════
-      else if (time < 25.0) {
-        _currentScene = 4;
-        _isWalking = false;
-        _characterVisible = true;
-        _useFlashlight = true;
-        _showSpeechBubble = true;
-
-        // Dừng tiếng bước chân
-        _sfxPlayer2.stop();
-
-        // 🔊 Typewriter speech + talking SFX
-        if (!_playedSpeechSfx) {
-          _playedSpeechSfx = true;
-          _speechBubbleChars = 0;
-          // Tiếng nói/gõ chữ
-          _sfxPlayer3.setReleaseMode(ReleaseMode.loop);
-          _sfxPlayer3.play(AssetSource('speak-in-game.mp3'));
-          _sfxPlayer3.setVolume(0.2);
-          // Typewriter: hiện từng chữ
-          _speechBubbleTimer = Timer.periodic(
-            const Duration(milliseconds: 120),
-            (timer) {
-              setState(() {
-                _speechBubbleChars++;
-                if (_speechBubbleChars >= _speechFullText.length) {
-                  timer.cancel();
-                  _sfxPlayer3.stop();
-                }
-              });
-            },
-          );
-        }
-
-        _vignetteIntensity = 0.5;
-      }
-      // ══════════ SCENE 5: Slam đen (25-30s) ══════════
-      else if (time < 30.0) {
-        _currentScene = 5;
-        _showSpeechBubble = false;
+      // ══════ SCENE 6: Slam Đen (50-55s) ══════
+      else if (time < 55.0) {
+        _currentScene = 6;
         _characterVisible = false;
         _showEnding = false;
         _showSwingingBulb = false;
-        _speechBubbleTimer?.cancel();
-        _sfxPlayer3.stop();
 
-        // 🔊 Tắt nhạc nền + âm thanh đóng sập
         if (!_playedSlam) {
           _playedSlam = true;
           _bgMusicPlayer.stop();
           _sfxPlayer1.stop();
+          _sfxPlayer2.stop();
           _sfxPlayer1.play(AssetSource('slam_shut.mp3'));
           _sfxPlayer1.setVolume(0.9);
         }
 
-        // Màn hình đen hoàn toàn
         _screenOpacity = 0.0;
+
+        // Jumpscare nhanh ở giây 52
+        if (time >= 52.0 && time < 52.5) {
+          _redFlashOpacity = 0.8;
+          _shakeX = (_random.nextDouble() - 0.5) * 40;
+          _shakeY = (_random.nextDouble() - 0.5) * 30;
+        } else {
+          _redFlashOpacity = 0.0;
+          _shakeX = 0;
+          _shakeY = 0;
+        }
       }
-      // ══════════ SCENE 6: Bóng đèn đung đưa + Nhạc (30-45s) ══════════
+      // ══════ SCENE 7: Đèn đung đưa + Title (55-90s) ══════
       else {
-        _currentScene = 6;
+        _currentScene = 7;
         _showSwingingBulb = true;
         _showEnding = true;
+        _characterVisible = false;
+        _showYoungKien = false;
+        _showParents = false;
 
-        // 🔊 Phát nhạc "Kiếp nào dó yêu nhau" + tiếng đèn cọt kẹt
         if (!_playedBulbMusic) {
           _playedBulbMusic = true;
           _sfxPlayer1.stop();
-          // Nhạc nền
           _bgMusicPlayer.setReleaseMode(ReleaseMode.loop);
           _bgMusicPlayer.play(AssetSource('kiepnaodoyeunhau.wav'));
           _bgMusicPlayer.setVolume(0.6);
-          // Tiếng đèn đung đưa cọt kẹt
           _sfxPlayer2.setReleaseMode(ReleaseMode.loop);
           _sfxPlayer2.play(AssetSource('creaking_light.mp3'));
           _sfxPlayer2.setVolume(0.4);
         }
 
-        // Bóng đèn đung đưa qua lại (sin wave)
-        double bulbTime = time - 30.0;
-        _bulbSwingAngle = sin(bulbTime * 1.8) * 0.4; // đung đưa chậm, ma mị
-
-        // Ánh sáng nhấp nháy theo đèn
+        double bulbTime = time - 55.0;
+        _bulbSwingAngle = sin(bulbTime * 1.8) * 0.4;
         _flickerOpacity = 0.85 + sin(bulbTime * 5.0) * 0.15;
 
-        // Fade in từ từ
-        double fadeIn = ((bulbTime) / 2.0).clamp(0.0, 1.0);
+        double fadeIn = (bulbTime / 2.0).clamp(0.0, 1.0);
         _screenOpacity = fadeIn;
-
-        // Title glow pulse
         _titleGlowIntensity = 0.5 + sin(bulbTime * 1.5) * 0.5;
       }
     });
@@ -419,7 +471,7 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: _currentScene >= 5 ? _skipTrailer : null,
+        onTap: _currentScene >= 6 ? _skipTrailer : null,
         child: Transform.translate(
           offset: Offset(_shakeX, _shakeY),
           child: Stack(
@@ -436,8 +488,14 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
                 child: Container(color: Colors.black),
               ),
 
-              // ── Character ──
+              // ── Character (teenager sprite sheet) ──
               if (_characterVisible) _buildCharacter(size),
+
+              // ── Young Kien (static image) ──
+              if (_showYoungKien) _buildYoungKien(size),
+
+              // ── Parents NPC ──
+              if (_showParents) _buildParentsNPC(size),
 
               // ── Speech Bubble ──
               if (_showSpeechBubble) _buildSpeechBubble(size),
@@ -471,7 +529,7 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
               if (_showTitle) _buildTitle(size),
 
               // ── Story Text ──
-              if (_showStoryText1 || _showStoryText2 || _showStoryText3)
+              if (_showStoryText)
                 _buildStoryText(size),
 
               // ── Swinging Light Bulb (background layer) ──
@@ -517,7 +575,41 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
   // PARALLAX BACKGROUND
   // ════════════════════════════════════════
   Widget _buildParallaxBackground(Size size) {
-    // Các layer từ xa → gần, tốc độ cuộn tăng dần
+    // Chuyển background theo scene
+    if (_currentBackground == 'countryside' || _currentBackground == 'family' || _currentBackground == 'school') {
+      // Dùng background tĩnh cho các cảnh quê/gia đình/trường học
+      String bgPath;
+      switch (_currentBackground) {
+        case 'family':
+          bgPath = 'images/backgrounds/bg_family_home.png';
+          break;
+        case 'school':
+          bgPath = 'images/backgrounds/bg_school.png';
+          break;
+        default:
+          bgPath = 'images/backgrounds/bg_countryside.png';
+      }
+      return Opacity(
+        opacity: _screenOpacity.clamp(0.0, 1.0),
+        child: Stack(
+          children: [
+            // Background image
+            Positioned.fill(
+              child: Transform.translate(
+                offset: Offset(-_parallaxOffset * 0.1, 0),
+                child: Image.asset(
+                  bgPath,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.centerLeft,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Cảnh cave/khu phố tối - dùng parallax layers
     final layers = [
       _ParallaxLayer('images/BackGround Layers/00.png', 0.02), // sky
       _ParallaxLayer('images/BackGround Layers/6.png', 0.05), // fog/light xa
@@ -535,7 +627,8 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
           // Base dark background
           Container(color: const Color(0xFF0a0a12)),
 
-          // Parallax layers
+          // Parallax layers (chỉ Scene 5 - khu phố tối)
+          if (_currentScene >= 5)
           ...layers.map((layer) {
             return Positioned.fill(
               child: Transform.translate(
@@ -546,7 +639,7 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
                   width: size.width * 1.5,
                   alignment: Alignment.centerLeft,
                   color:
-                      _currentScene >= 5 ? Colors.black.withOpacity(0.3) : null,
+                      _currentScene >= 6 ? Colors.black.withOpacity(0.3) : null,
                   colorBlendMode: BlendMode.darken,
                 ),
               ),
@@ -554,7 +647,7 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
           }),
 
           // Light rays overlay
-          if (_currentScene < 6)
+          if (_currentScene == 5)
             Positioned.fill(
               child: Opacity(
                 opacity: (_flickerOpacity * 0.3).clamp(0.0, 0.4),
@@ -640,6 +733,48 @@ class _SplashGameState extends State<SplashGame> with TickerProviderStateMixin {
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
     final frame = await codec.getNextFrame();
     return frame.image;
+  }
+
+  // ════════════════════════════════════════
+  // YOUNG KIEN (static image - tuổi thơ)
+  // ════════════════════════════════════════
+  Widget _buildYoungKien(Size size) {
+    double charScale = size.height * 0.25;
+    double groundY = size.height * 0.88 - charScale;
+
+    return Positioned(
+      left: size.width * _youngKienX,
+      top: groundY,
+      child: SizedBox(
+        width: charScale,
+        height: charScale,
+        child: Image.asset(
+          'images/npc/kien_young.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
+  // ════════════════════════════════════════
+  // PARENTS NPC (static image)
+  // ════════════════════════════════════════
+  Widget _buildParentsNPC(Size size) {
+    double npcScale = size.height * 0.30;
+    double groundY = size.height * 0.88 - npcScale;
+
+    return Positioned(
+      left: size.width * _parentsX,
+      top: groundY,
+      child: SizedBox(
+        width: npcScale * 1.4,
+        height: npcScale,
+        child: Image.asset(
+          'images/npc/parents.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
   }
 
   // ════════════════════════════════════════

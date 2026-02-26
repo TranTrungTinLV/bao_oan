@@ -23,6 +23,8 @@ class GameController {
   bool gotKey = false;
   bool enteredHouse = false;
   bool metBaNam = false;
+  bool wentToSleep = false; // Tự động đi ngủ ngày 1
+  bool morningArrived = false; // Sáng hôm sau ngày 2
   bool foundOldItems = false; // Tìm thấy Thẻ sinh viên & Đồng hồ cũ
   bool heardNoise1 = false; // Lần 1 nghe tiếng động
   bool visitedAtticFirstTime = false; // Lên gác kiếm chuột lần đầu
@@ -71,14 +73,36 @@ class GameController {
         }
         return [];
       case GameScene.inside:
-        if (!metBaNam && enteredHouse) {
+        if (!wentToSleep && enteredHouse) {
+          return [
+            DialogLine('Kiên', 'Dọn dẹp mệt quá... Căn nhà này cũng không bề bộn lắm.', false),
+            DialogLine('Kiên', 'Có sẵn cái ghế Sofa cũ, mình nằm chợp mắt một chút vậy...', false),
+            DialogLine('Hệ thống', 'Tiếng mưa rơi rả rít ngoài hiên, gió cứ ào ào thổi vào... Kiên nhanh chóng chìm vào giấc ngủ.', false),
+          ];
+        }
+        if (wentToSleep && isPowerOff && !lookedInMirror) {
+          return [
+            DialogLine('Kiên', 'Trời đụ má... mấy giờ rồi nhỉ? Điện thoại bảo 3:15 AM?', false),
+            DialogLine('Kiên', 'Ơ cúp điện à? Sao lại đúng lúc thế này chứ!!!', false),
+            DialogLine('Kiên', 'Khoan đã... tiếng kèn trống đám tang ở đâu vọng lại thế này? Nửa đêm rồi cơ mà?', false),
+            DialogLine('Hệ thống', '💡 Nhấn bật đèn pin. Đi xuống nhà tìm bồn rửa mặt soi gương xem sao.', false),
+          ];
+        }
+        if (lookedInMirror && !morningArrived) {
+          return [
+            DialogLine('Kiên', 'Con cặc gì trong gương vừa nãy vậy...', false),
+            DialogLine('Kiên', 'Cố nhắm mắt đến sáng... Trưa rồi, mình đem rác đi vứt thôi.', false),
+            DialogLine('Hệ thống', 'Bạn kéo bọc rác ra ngoài cửa...', false),
+          ];
+        }
+        if (morningArrived && !metBaNam) {
           return [
             DialogLine('Bà Năm', 'Cậu mới chuyển đến à?', true),
             DialogLine('Kiên', 'Dạ vâng cháu mới chuyển đến hồi tối hôm qua.', false),
             DialogLine('Bà Năm', 'Thế... cậu có cúng kiến gì khi vào ở chưa?', true),
             DialogLine('Kiên', 'Cúng kiến? Cúng kiến gì hả bà?', false),
             DialogLine('Bà Năm', 'Người dọn vào thì ít nhất cũng phải cúng xin những người khuất mặt khuất mày. Cậu cẩn thận đấy!', true),
-            DialogLine('Kiên', '...', false, choices: [
+            DialogLine('Kiên', 'Con cặc...', false, choices: [
               DialogChoice('Mấy cái chuyện mê tín này cháu không tin đâu!', () {
                 sanityLevel -= 0.1; // Cứng đầu thì bị ám mạnh hơn
               }),
@@ -106,13 +130,6 @@ class GameController {
           return [
             DialogLine('Kiên', 'Lại nữa?! Lần này tiếng động dồn dập hơn lúc nãy! Không thể nào là chuột được!', false),
             DialogLine('Hệ thống', '⬆️ Hãy lên cầu thang kiểm tra lần 2.', false),
-          ];
-        }
-        if (isPowerOff && !lookedInMirror) {
-          return [
-            DialogLine('Kiên', 'Ơ cúp điện à? Sao lại đúng lúc thế này chứ!!!', false),
-            DialogLine('Kiên', 'Khoan đã... tiếng kèn trống đám tang ở đâu vọng lại thế này? Nửa đêm rồi cơ mà?', false),
-            DialogLine('Hệ thống', '💡 Nhấn bật đèn pin. Đi xuống nhà tìm bồn rửa mặt soi gương xem có gì bất thường.', false),
           ];
         }
         if (solvedTornPaper && !solvedBetelTray) {
