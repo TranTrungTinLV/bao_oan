@@ -1,3 +1,4 @@
+import 'package:bao_oan/play_game_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,7 +41,6 @@ class _HomeGameState extends State<HomeGame>
           ),
         ),
         child: Container(
-          // Dark overlay
           decoration: BoxDecoration(
             gradient: RadialGradient(
               colors: [
@@ -63,33 +63,73 @@ class _HomeGameState extends State<HomeGame>
                     color: Colors.white,
                     letterSpacing: 10,
                     shadows: [
-                      Shadow(
-                        blurRadius: 25,
-                        color: Color(0xFFcc0000),
-                      ),
-                      Shadow(
-                        blurRadius: 5,
-                        color: Colors.black,
-                        offset: Offset(3, 3),
-                      ),
+                      Shadow(blurRadius: 25, color: Color(0xFFcc0000)),
+                      Shadow(blurRadius: 5, color: Colors.black, offset: Offset(3, 3)),
                     ],
                   ),
                 ),
-                const SizedBox(height: 40),
-                // Pulsing "Coming Soon"
+                const SizedBox(height: 30),
+                // ── Play Demo Button ──
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushReplacementNamed(context, PlayGameScreen.id);
+                  },
+                  child: AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.red.withOpacity(0.2 + _pulseController.value * 0.1),
+                              Colors.red.withOpacity(0.1),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.red.withOpacity(0.5 + _pulseController.value * 0.3),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withOpacity(0.1 + _pulseController.value * 0.1),
+                              blurRadius: 15,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.play_arrow, color: Colors.white, size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'CHƠI DEMO',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                letterSpacing: 4,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Coming Soon
                 AnimatedBuilder(
                   animation: _pulseController,
                   builder: (context, child) {
                     return Opacity(
                       opacity: 0.4 + _pulseController.value * 0.6,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 40, vertical: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                         decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Colors.red.withOpacity(0.4),
-                            width: 1,
-                          ),
+                          border: Border.all(color: Colors.red.withOpacity(0.4), width: 1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
@@ -105,15 +145,14 @@ class _HomeGameState extends State<HomeGame>
                     );
                   },
                 ),
-                const SizedBox(height: 30),
-                // Replay trailer button
+                const SizedBox(height: 20),
+                // Replay trailer
                 GestureDetector(
                   onTap: () {
                     Navigator.pushReplacementNamed(context, 'splash_game');
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(20),
@@ -126,10 +165,7 @@ class _HomeGameState extends State<HomeGame>
                         SizedBox(width: 8),
                         Text(
                           'Xem lại Trailer',
-                          style: TextStyle(
-                            color: Colors.white30,
-                            fontSize: 13,
-                          ),
+                          style: TextStyle(color: Colors.white30, fontSize: 13),
                         ),
                       ],
                     ),
