@@ -1,6 +1,7 @@
 import 'package:bao_oan/HomeGame.dart';
 import 'package:bao_oan/play_game_screen.dart';
 import 'package:bao_oan/splashGame.dart';
+import 'package:bao_oan/trailer_fpv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +30,7 @@ class MyApp extends StatelessWidget {
         SplashGame.id: (context) => const SplashGame(),
         HomeGame.id: (context) => const HomeGame(),
         PlayGameScreen.id: (context) => const PlayGameScreen(),
+        TrailerFPV.id: (context) => const TrailerFPV(),
       },
     );
   }

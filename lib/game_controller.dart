@@ -39,6 +39,10 @@ class GameController {
   bool solvedMandala = false; // Giải đố Mạn-đà-la 5 góc
   bool solvedTornPaper = false; // Giải đố Ráp bùa rách
   bool solvedBetelTray = false; // Giải đố Khay trầu cau (hiện chữ máu)
+  bool solvedOffering = false; // Nghi thức cúng cô hồn
+  bool solvedDiaryDecode = false; // Giải mã nhật ký
+  bool solvedGhostRiddle = false; // Câu đố ma dân gian
+  bool solvedKhmerCharm = false; // Bùa ngãi Khơ Me
 
   // Player position
   double playerX = 0.15;

@@ -1,4 +1,5 @@
 import 'package:bao_oan/play_game_screen.dart';
+import 'package:bao_oan/trailer_fpv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -166,6 +167,32 @@ class _HomeGameState extends State<HomeGame>
                         Text(
                           'Xem lại Trailer',
                           style: TextStyle(color: Colors.white30, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Trailer FPV - Góc nhìn thứ nhất
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushReplacementNamed(context, TrailerFPV.id);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.red.withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.videocam, color: Colors.red, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          '🎬 Trailer Đặc Biệt',
+                          style: TextStyle(color: Colors.red, fontSize: 13),
                         ),
                       ],
                     ),

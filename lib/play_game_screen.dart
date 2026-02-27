@@ -9,6 +9,10 @@ import 'package:bao_oan/game_controller.dart';
 import 'package:bao_oan/puzzle_mandala_widget.dart';
 import 'package:bao_oan/puzzle_torn_paper_widget.dart';
 import 'package:bao_oan/puzzle_betel_tray_widget.dart';
+import 'package:bao_oan/puzzle_khmer_charm_widget.dart';
+import 'package:bao_oan/puzzle_offering_ritual_widget.dart';
+import 'package:bao_oan/puzzle_ghost_riddle_widget.dart';
+import 'package:bao_oan/puzzle_diary_decode_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,6 +44,10 @@ class _PlayGameScreenState extends State<PlayGameScreen>
   bool _showMandala = false;
   bool _showTornPaper = false;
   bool _showBetelTray = false;
+  bool _showOfferingRitual = false;
+  bool _showDiaryDecode = false;
+  bool _showGhostRiddle = false;
+  bool _showKhmerCharm = false;
 
   // Animation
   late AnimationController _flickerController;
@@ -394,7 +402,12 @@ class _PlayGameScreenState extends State<PlayGameScreen>
           setState(() {
             _game.metBaNam = true;
           });
-          // Nói chuyện xong với Bà Năm, nhường quyền đi xem đồ cũ Sofa
+          // Bà Năm nói cúng kiến → Bắt buộc làm nghi thức cúng
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted && !_game.solvedOffering) {
+              setState(() => _showOfferingRitual = true);
+            }
+          });
         } else if (_game.foundOldItems && !_game.heardNoise1) {
           // Sau khi nhặt được mớ đồ cũ -> Trigger tiếng chuột lần 1
           _noiseTimer = Timer(const Duration(seconds: 3), () {
@@ -449,13 +462,19 @@ class _PlayGameScreenState extends State<PlayGameScreen>
         }
         break;
       case GameScene.attic:
-        if (!_game.foundDiary && !_game.solvedMandala && _game.wentToAttic) {
+      if (!_game.foundDiary && !_game.solvedMandala && _game.wentToAttic) {
+        // Bước 1: Câu đố ma xuất hiện khi vào gác mái
+        if (!_game.solvedGhostRiddle) {
+          setState(() => _showGhostRiddle = true);
+        } else {
+          // Bước 2: Giải đố ma xong → Mandala
           setState(() {
             _game.foundDiary = true;
             _showMandala = true;
           });
         }
-        break;
+      }
+      break;
       default:
         break;
     }
@@ -465,10 +484,17 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     setState(() {
       _showMandala = false;
       _game.solvedMandala = true;
-      _showDiaryContent = true; // Hiện thư con ma
     });
-    // Tiếng lật sách sột soạt
     _sfxPlayer.play(AssetSource('paper_rustle.mp3'));
+
+    // Sau mandala → Bùa Khơ Me bắt buộc
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted && !_game.solvedKhmerCharm) {
+        setState(() => _showKhmerCharm = true);
+      } else {
+        setState(() => _showDiaryContent = true);
+      }
+    });
   }
 
   void _onTornPaperSolved() {
@@ -586,6 +612,96 @@ class _PlayGameScreenState extends State<PlayGameScreen>
     _transitionToScene(GameScene.endDemo);
   }
 
+  // ═══ NEW PUZZLE HANDLERS ═══
+  void _onOfferingRitualSolved() {
+    setState(() {
+      _showOfferingRitual = false;
+      _game.solvedOffering = true;
+    });
+    _sfxPlayer.play(AssetSource('wind_howl.mp3'));
+    _sfxPlayer.setVolume(0.3);
+  }
+
+  void _onDiaryDecodeSolved() {
+    setState(() {
+      _showDiaryDecode = false;
+      _game.solvedDiaryDecode = true;
+      _showDiaryContent = true;
+    });
+    _sfxPlayer.play(AssetSource('paper_rustle.mp3'));
+  }
+
+  void _onGhostRiddleSolved() {
+    setState(() {
+      _showGhostRiddle = false;
+      _game.solvedGhostRiddle = true;
+    });
+    _sfxPlayer.play(AssetSource('scratching.mp3'));
+    _sfxPlayer.setVolume(0.4);
+
+    // Giải đố ma xong → Mandala tiếp
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        setState(() {
+          _game.foundDiary = true;
+          _showMandala = true;
+        });
+      }
+    });
+  }
+
+  void _onKhmerCharmSolved() {
+    setState(() {
+      _showKhmerCharm = false;
+      _game.solvedKhmerCharm = true;
+      _showDiaryContent = true; // Hiện thư con ma sau khi giải bùa
+    });
+    _sfxPlayer.play(AssetSource('chanting_nam_mo.mp3'));
+    _sfxPlayer.setVolume(0.4);
+  }
+
+  // ═══ BẮT BUỘC LÀM LẠI PUZZLE KHI BỎ QUA ═══
+  // Kiên tự nói chuyện với chính mình rồi buộc làm lại
+  void _forceRetryPuzzle(String selfDialog, VoidCallback reshow, VoidCallback hide) {
+    // Ẩn puzzle tạm
+    hide();
+
+    // Hiện self-dialog kiểu Kiên tự nhủ
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Text('💭 ', style: TextStyle(fontSize: 20)),
+            Expanded(
+              child: Text(
+                selfDialog,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1a0500),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.red[900]!.withOpacity(0.5)),
+        ),
+      ),
+    );
+
+    // Sau 3 giây → re-show puzzle bắt buộc
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        reshow();
+      }
+    });
+  }
+
   void _triggerGhostFlash() async {
     _sfxPlayer.play(AssetSource('jumpscare_mirror.mp3'));
     _sfxPlayer.setVolume(1.0);
@@ -694,7 +810,11 @@ class _PlayGameScreenState extends State<PlayGameScreen>
         _isTransitioning ||
         _showMandala ||
         _showTornPaper ||
-        _showBetelTray) return;
+        _showBetelTray ||
+        _showOfferingRitual ||
+        _showDiaryDecode ||
+        _showGhostRiddle ||
+        _showKhmerCharm) return;
 
     if (_game.currentScene == GameScene.outside &&
         _game.isNearDoor() &&
@@ -710,6 +830,12 @@ class _PlayGameScreenState extends State<PlayGameScreen>
       _game.isDialogActive = true;
       _game.dialogIndex = 0;
       setState(() {});
+      // Sau dialog nhặt đồ cũ → Hiện puzzle giải mã nhật ký
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && !_game.solvedDiaryDecode) {
+          setState(() => _showDiaryDecode = true);
+        }
+      });
     } else if (_game.currentScene == GameScene.inside &&
         _game.isNearStairs() &&
         _game.heardNoise1 &&
@@ -851,11 +977,61 @@ class _PlayGameScreenState extends State<PlayGameScreen>
                 ),
               ),
 
+            // ═══ NEW PUZZLES ═══
+            if (_showOfferingRitual)
+              Positioned.fill(
+                child: PuzzleOfferingRitualWidget(
+                  onSolved: _onOfferingRitualSolved,
+                  onClose: () => _forceRetryPuzzle(
+                    'Không được... bà Năm nói phải cúng kiến mới yên. Mình phải làm lại!',
+                    () => setState(() => _showOfferingRitual = true),
+                    () => setState(() => _showOfferingRitual = false),
+                  ),
+                ),
+              ),
+            if (_showDiaryDecode)
+              Positioned.fill(
+                child: PuzzleDiaryDecodeWidget(
+                  onSolved: _onDiaryDecodeSolved,
+                  onClose: () => _forceRetryPuzzle(
+                    'Cuốn nhật ký này... có gì đó bất thường. Mình phải đọc cho hết!',
+                    () => setState(() => _showDiaryDecode = true),
+                    () => setState(() => _showDiaryDecode = false),
+                  ),
+                ),
+              ),
+            if (_showGhostRiddle)
+              Positioned.fill(
+                child: PuzzleGhostRiddleWidget(
+                  onSolved: _onGhostRiddleSolved,
+                  onClose: () => _forceRetryPuzzle(
+                    'Tiếng thì thào vẫn vang vọng... Mình không thể bỏ qua được!',
+                    () => setState(() => _showGhostRiddle = true),
+                    () => setState(() => _showGhostRiddle = false),
+                  ),
+                ),
+              ),
+            if (_showKhmerCharm)
+              Positioned.fill(
+                child: PuzzleKhmerCharmWidget(
+                  onSolved: _onKhmerCharmSolved,
+                  onClose: () => _forceRetryPuzzle(
+                    'Lá bùa này đang phát ra ánh sáng lạ... Mình phải giải trừ nó!',
+                    () => setState(() => _showKhmerCharm = true),
+                    () => setState(() => _showKhmerCharm = false),
+                  ),
+                ),
+              ),
+
             // Controls
             if (!_game.isDialogActive &&
                 !_showMandala &&
                 !_showTornPaper &&
-                !_showBetelTray)
+                !_showBetelTray &&
+                !_showOfferingRitual &&
+                !_showDiaryDecode &&
+                !_showGhostRiddle &&
+                !_showKhmerCharm)
               _buildControls(size),
 
             // Sanity Bar
